@@ -1,0 +1,167 @@
+# Sirus AI CRM — Agent 引擎接口契约
+# 运行位置: 4090 (172.16.11.194:8100)
+# 技术栈: FastAPI + OpenAI Function Calling + Redis (对话上下文)
+# LLM: 本地 vLLM (Qwen3-30B-A3B, localhost:8000) + 云端 API 降级
+
+openapi: "3.0.3"
+info:
+  title: Sirus Agent Engine API
+  version: "0.1.0"
+  description: |
+    AI Agent 引擎 —— CRM 的大脑。
+    架构: Supervisor Agent → 子 Agent (销售助手/线索评分/客户洞察/商机预测)
+    推理: 优先本地 vLLM，超时/失败时降级到云端 API
+
+servers:
+  - url: http://172.16.11.194:8100
+    description: Agent 引擎 (4090)
+
+paths:
+  /agent/chat:
+    post:
+      summary: 发送对话消息
+      description: |
+        用户消息 → Supervisor Agent 意图识别 → 委派子 Agent → Tool Calling → 返回结果。
+        支持 SSE 流式返回。
+      tags: [Chat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: 对话回复
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 流式返回（每行一个 JSON chunk）
+
+  /agent/chat/stream:
+    post:
+      summary: 流式对话（SSE）
+      tags: [Chat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /agent/evaluate:
+    post:
+      summary: Agent 质量评估
+      description: 用于自动化测试 — 输入测试用例，返回 Agent 响应 + 元数据
+      tags: [Evaluation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvalRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalResponse"
+
+  /health:
+    get:
+      summary: Agent 引擎健康检查
+      tags: [Health]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: 用户消息
+        session_id:
+          type: string
+          description: 会话ID（不传则新建会话）
+        user_id:
+          type: string
+          description: 钉钉用户ID
+        stream:
+          type: boolean
+          default: false
+
+    ChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+          description: Agent 回复文本
+        session_id:
+          type: string
+        intent:
+          type: string
+          description: "识别的意图: create_lead / query_lead / update_lead / convert_to_customer / query_customer / general_chat / ..."
+        agent_used:
+          type: string
+          description: "处理的子Agent: supervisor / sales_assistant / lead_scoring / customer_insight / ..."
+        tool_calls:
+          type: array
+          description: 执行的 Tool 列表
+          items:
+            type: object
+            properties:
+              tool: { type: string }
+              args: { type: object }
+              result_summary: { type: string }
+        model_used:
+          type: string
+          description: "使用的模型: local/qwen3-30b | cloud/gpt-4.1 | ..."
+        latency_ms:
+          type: integer
+
+    EvalRequest:
+      type: object
+      required: [test_message]
+      properties:
+        test_message: { type: string }
+        expected_intent: { type: string }
+        expected_tool: { type: string }
+        session_id: { type: string }
+
+    EvalResponse:
+      type: object
+      properties:
+        reply: { type: string }
+        intent: { type: string }
+        intent_correct: { type: boolean }
+        tool_calls: { type: array, items: { type: object } }
+        tool_correct: { type: boolean }
+        latency_ms: { type: integer }
+        model_used: { type: string }
+
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded, error] }
+        vllm: { type: string, enum: [connected, disconnected] }
+        redis: { type: string, enum: [connected, disconnected] }
+        timestamp: { type: string, format: date-time }
+        version: { type: string }

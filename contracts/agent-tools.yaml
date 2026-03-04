@@ -1,0 +1,218 @@
+# Sirus AI CRM — Agent Tool Calling Schema
+# 格式: OpenAI Function Calling 兼容
+# 使用方: Agent 引擎 (4090) 通过 Tool Calling 调用 CRM API (mac_min_8T:8900)
+
+tools:
+  # ──────── 线索工具 ────────
+  - name: create_lead
+    description: 创建销售线索。从用户对话中提取公司名、联系人、电话等信息后调用。
+    parameters:
+      type: object
+      required: [company_name, contact_name]
+      properties:
+        company_name:
+          type: string
+          description: 公司名称
+        contact_name:
+          type: string
+          description: 联系人姓名
+        phone:
+          type: string
+          description: 联系电话
+        email:
+          type: string
+          description: 邮箱
+        source:
+          type: string
+          enum: [website, exhibition, referral, cold_call, dingtalk, other]
+          description: 线索来源
+        industry:
+          type: string
+          description: 所属行业
+        notes:
+          type: string
+          description: 备注
+
+  - name: query_leads
+    description: 搜索线索。支持按公司名、联系人、手机号模糊搜索。
+    parameters:
+      type: object
+      properties:
+        keyword:
+          type: string
+          description: 搜索关键词（公司名/联系人/手机号）
+        status:
+          type: string
+          enum: [new, contacted, qualified, converted, closed]
+        page:
+          type: integer
+          default: 1
+        size:
+          type: integer
+          default: 10
+
+  - name: update_lead
+    description: 更新线索信息（状态、联系方式、备注等）。
+    parameters:
+      type: object
+      required: [lead_id]
+      properties:
+        lead_id:
+          type: string
+          description: 线索ID
+        status:
+          type: string
+          enum: [new, contacted, qualified, converted, closed]
+        contact_name:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+
+  - name: convert_lead_to_customer
+    description: 将已确认的线索转化为正式客户，同时创建联系人。
+    parameters:
+      type: object
+      required: [lead_id]
+      properties:
+        lead_id:
+          type: string
+          description: 要转化的线索ID
+
+  # ──────── 客户工具 ────────
+  - name: create_customer
+    description: 直接创建客户（非线索转化场景）。
+    parameters:
+      type: object
+      required: [company_name]
+      properties:
+        company_name:
+          type: string
+        industry:
+          type: string
+        region:
+          type: string
+        level:
+          type: string
+          enum: [S, A, B, C, D]
+          description: 客户等级
+        notes:
+          type: string
+
+  - name: query_customers
+    description: 搜索客户信息。
+    parameters:
+      type: object
+      properties:
+        keyword:
+          type: string
+          description: 搜索关键词（公司名）
+        level:
+          type: string
+          enum: [S, A, B, C, D]
+        page:
+          type: integer
+          default: 1
+        size:
+          type: integer
+          default: 10
+
+  - name: get_customer_360
+    description: 获取客户360度视图，包含关联的线索、商机、活动等完整信息。
+    parameters:
+      type: object
+      required: [customer_id]
+      properties:
+        customer_id:
+          type: string
+
+  # ──────── 商机工具 ────────
+  - name: create_opportunity
+    description: 创建商机，关联到客户。
+    parameters:
+      type: object
+      required: [name, customer_id]
+      properties:
+        name:
+          type: string
+          description: 商机名称
+        customer_id:
+          type: string
+        amount:
+          type: number
+          description: 预计金额(元)
+        expected_close_date:
+          type: string
+          description: 预计成交日期 (YYYY-MM-DD)
+        product_type:
+          type: string
+          enum: [standard, custom]
+
+  - name: query_opportunities
+    description: 搜索商机。
+    parameters:
+      type: object
+      properties:
+        keyword:
+          type: string
+        customer_id:
+          type: string
+        stage:
+          type: string
+          enum: [initial_contact, needs_confirmed, solution_review, negotiation, won, lost]
+        page:
+          type: integer
+          default: 1
+
+  - name: update_opportunity_stage
+    description: 推进商机阶段（阶段只能向前推进，丢单可从任意阶段）。
+    parameters:
+      type: object
+      required: [opportunity_id, new_stage]
+      properties:
+        opportunity_id:
+          type: string
+        new_stage:
+          type: string
+          enum: [initial_contact, needs_confirmed, solution_review, negotiation, won, lost]
+        lost_reason:
+          type: string
+          description: 丢单原因（new_stage=lost时必填）
+
+  # ──────── 活动工具 ────────
+  - name: create_activity
+    description: 记录销售活动（拜访、电话、邮件、会议、备注）。
+    parameters:
+      type: object
+      required: [type, subject]
+      properties:
+        type:
+          type: string
+          enum: [call, visit, email, meeting, note]
+        subject:
+          type: string
+          description: 活动主题
+        content:
+          type: string
+          description: 活动详情
+        customer_id:
+          type: string
+        opportunity_id:
+          type: string
+
+  - name: query_activities
+    description: 查询活动记录。
+    parameters:
+      type: object
+      properties:
+        customer_id:
+          type: string
+        opportunity_id:
+          type: string
+        type:
+          type: string
+          enum: [call, visit, email, meeting, note]
+        page:
+          type: integer
+          default: 1

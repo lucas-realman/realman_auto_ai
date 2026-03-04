@@ -1,0 +1,547 @@
+# Sirus AI CRM — CRM 后端接口契约
+# 运行位置: mac_min_8T (172.16.12.50:8900)
+# 技术栈: FastAPI + SQLAlchemy + Alembic + PostgreSQL 16 + pgvector + Redis 7
+
+openapi: "3.0.3"
+info:
+  title: Sirus CRM API
+  version: "0.1.0"
+  description: |
+    AI-Native CRM 后端 API。
+    所有写操作自动记录审计日志。
+    认证方式: JWT Bearer Token (S3-4 实现)。
+
+servers:
+  - url: http://172.16.12.50:8900
+    description: CRM 后端 (mac_min_8T)
+
+paths:
+  # ──────── 线索 Leads ────────
+  /api/v1/leads:
+    get:
+      summary: 线索列表（分页+搜索）
+      tags: [Leads]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: 关键词搜索（公司名/联系人/手机号）
+        - name: status
+          in: query
+          schema: { type: string, enum: [new, contacted, qualified, converted, closed] }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: sort
+          in: query
+          schema: { type: string, default: "-created_at" }
+          description: 排序字段，前缀 - 表示降序
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLeads"
+    post:
+      summary: 创建线索
+      tags: [Leads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadCreate"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /api/v1/leads/{lead_id}:
+    parameters:
+      - name: lead_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: 线索详情
+      tags: [Leads]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+    put:
+      summary: 更新线索
+      tags: [Leads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadUpdate"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+    delete:
+      summary: 删除线索（软删除）
+      tags: [Leads]
+      responses:
+        "204":
+          description: 已删除
+
+  /api/v1/leads/{lead_id}/convert:
+    parameters:
+      - name: lead_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      summary: 线索转客户
+      tags: [Leads]
+      description: 将合格线索转化为客户，同时创建联系人
+      responses:
+        "201":
+          description: 转化成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
+  # ──────── 客户 Customers ────────
+  /api/v1/customers:
+    get:
+      summary: 客户列表
+      tags: [Customers]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: level
+          in: query
+          schema: { type: string, enum: [S, A, B, C, D] }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedCustomers"
+    post:
+      summary: 创建客户
+      tags: [Customers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerCreate"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
+  /api/v1/customers/{customer_id}:
+    parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: 客户详情（360视图）
+      tags: [Customers]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerDetail"
+    put:
+      summary: 更新客户
+      tags: [Customers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerUpdate"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
+  # ──────── 商机 Opportunities ────────
+  /api/v1/opportunities:
+    get:
+      summary: 商机列表
+      tags: [Opportunities]
+      parameters:
+        - name: stage
+          in: query
+          schema: { type: string, enum: [initial_contact, needs_confirmed, solution_review, negotiation, won, lost] }
+        - name: customer_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedOpportunities"
+    post:
+      summary: 创建商机
+      tags: [Opportunities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityCreate"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+
+  /api/v1/opportunities/{opp_id}:
+    parameters:
+      - name: opp_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: 商机详情
+      tags: [Opportunities]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+    put:
+      summary: 更新商机（含阶段推进）
+      tags: [Opportunities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityUpdate"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+
+  # ──────── 活动 Activities ────────
+  /api/v1/activities:
+    get:
+      summary: 活动列表
+      tags: [Activities]
+      parameters:
+        - name: customer_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: opportunity_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: type
+          in: query
+          schema: { type: string, enum: [call, visit, email, meeting, note] }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedActivities"
+    post:
+      summary: 创建活动
+      tags: [Activities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityCreate"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+
+  # ──────── 统计 Analytics ────────
+  /api/v1/analytics/funnel:
+    get:
+      summary: 商机漏斗统计
+      tags: [Analytics]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunnelData"
+
+  /api/v1/dashboard:
+    get:
+      summary: 仪表盘汇总数据
+      tags: [Analytics]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardData"
+
+components:
+  schemas:
+    # ── 线索 ──
+    LeadCreate:
+      type: object
+      required: [company_name, contact_name]
+      properties:
+        company_name: { type: string, maxLength: 200 }
+        contact_name: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 20 }
+        email: { type: string, format: email }
+        source: { type: string, enum: [website, exhibition, referral, cold_call, dingtalk, other] }
+        industry: { type: string, maxLength: 100 }
+        notes: { type: string }
+        tags: { type: array, items: { type: string } }
+
+    LeadUpdate:
+      type: object
+      properties:
+        company_name: { type: string }
+        contact_name: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        status: { type: string, enum: [new, contacted, qualified, converted, closed] }
+        owner_id: { type: string, format: uuid }
+        ai_score: { type: number, minimum: 0, maximum: 100, description: "AI评分 (线索评分Agent写入)" }
+        notes: { type: string }
+        tags: { type: array, items: { type: string } }
+
+    Lead:
+      allOf:
+        - $ref: "#/components/schemas/LeadCreate"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            status: { type: string, enum: [new, contacted, qualified, converted, closed], default: new }
+            owner_id: { type: string, format: uuid, nullable: true }
+            ai_score: { type: number, nullable: true }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    PaginatedLeads:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Lead" } }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+        pages: { type: integer }
+
+    # ── 客户 ──
+    CustomerCreate:
+      type: object
+      required: [company_name]
+      properties:
+        company_name: { type: string, maxLength: 200 }
+        industry: { type: string, maxLength: 100 }
+        region: { type: string, maxLength: 100 }
+        level: { type: string, enum: [S, A, B, C, D], default: C }
+        address: { type: string }
+        website: { type: string }
+        notes: { type: string }
+        tags: { type: array, items: { type: string } }
+
+    CustomerUpdate:
+      type: object
+      properties:
+        company_name: { type: string }
+        industry: { type: string }
+        region: { type: string }
+        level: { type: string, enum: [S, A, B, C, D] }
+        address: { type: string }
+        notes: { type: string }
+        tags: { type: array, items: { type: string } }
+
+    Customer:
+      allOf:
+        - $ref: "#/components/schemas/CustomerCreate"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            owner_id: { type: string, format: uuid, nullable: true }
+            lead_id: { type: string, format: uuid, nullable: true, description: "转化来源线索" }
+            ai_summary: { type: string, nullable: true, description: "AI客户画像" }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    CustomerDetail:
+      allOf:
+        - $ref: "#/components/schemas/Customer"
+        - type: object
+          properties:
+            contacts: { type: array, items: { $ref: "#/components/schemas/Contact" } }
+            recent_leads: { type: array, items: { $ref: "#/components/schemas/Lead" } }
+            opportunities: { type: array, items: { $ref: "#/components/schemas/Opportunity" } }
+            recent_activities: { type: array, items: { $ref: "#/components/schemas/Activity" } }
+
+    PaginatedCustomers:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Customer" } }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+        pages: { type: integer }
+
+    Contact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        customer_id: { type: string, format: uuid }
+        name: { type: string }
+        title: { type: string }
+        department: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        is_decision_maker: { type: boolean, default: false }
+
+    # ── 商机 ──
+    OpportunityCreate:
+      type: object
+      required: [name, customer_id]
+      properties:
+        name: { type: string, maxLength: 200 }
+        customer_id: { type: string, format: uuid }
+        amount: { type: number, minimum: 0, description: "预计金额(元)" }
+        stage: { type: string, enum: [initial_contact, needs_confirmed, solution_review, negotiation, won, lost], default: initial_contact }
+        expected_close_date: { type: string, format: date }
+        product_type: { type: string, enum: [standard, custom], default: standard }
+        notes: { type: string }
+
+    OpportunityUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        amount: { type: number }
+        stage: { type: string, enum: [initial_contact, needs_confirmed, solution_review, negotiation, won, lost] }
+        expected_close_date: { type: string, format: date }
+        win_rate: { type: number, minimum: 0, maximum: 100, description: "AI预测赢率" }
+        lost_reason: { type: string, description: "丢单原因(stage=lost时填写)" }
+        notes: { type: string }
+
+    Opportunity:
+      allOf:
+        - $ref: "#/components/schemas/OpportunityCreate"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            owner_id: { type: string, format: uuid, nullable: true }
+            win_rate: { type: number, nullable: true }
+            lost_reason: { type: string, nullable: true }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    PaginatedOpportunities:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Opportunity" } }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+        pages: { type: integer }
+
+    # ── 活动 ──
+    ActivityCreate:
+      type: object
+      required: [type, subject]
+      properties:
+        type: { type: string, enum: [call, visit, email, meeting, note] }
+        subject: { type: string, maxLength: 200 }
+        content: { type: string }
+        customer_id: { type: string, format: uuid }
+        opportunity_id: { type: string, format: uuid }
+        lead_id: { type: string, format: uuid }
+        scheduled_at: { type: string, format: date-time }
+
+    Activity:
+      allOf:
+        - $ref: "#/components/schemas/ActivityCreate"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            user_id: { type: string, format: uuid }
+            ai_summary: { type: string, nullable: true }
+            created_at: { type: string, format: date-time }
+
+    PaginatedActivities:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Activity" } }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+        pages: { type: integer }
+
+    # ── 统计 ──
+    FunnelData:
+      type: object
+      properties:
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              stage: { type: string }
+              count: { type: integer }
+              total_amount: { type: number }
+              conversion_rate: { type: number }
+              avg_days: { type: number }
+
+    DashboardData:
+      type: object
+      properties:
+        leads_count: { type: integer }
+        customers_count: { type: integer }
+        opportunities_total_amount: { type: number }
+        monthly_conversion_rate: { type: number }
+        new_leads_this_month: { type: integer }
+        new_customers_this_month: { type: integer }

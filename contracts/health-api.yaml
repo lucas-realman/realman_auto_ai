@@ -1,0 +1,41 @@
+# Sirus AI CRM — 健康检查接口契约
+openapi: "3.0.3"
+info:
+  title: Health Check API
+  version: "1.0.0"
+  description: 各节点健康检查接口
+
+paths:
+  /health:
+    get:
+      summary: 节点健康检查
+      responses:
+        "200":
+          description: 健康
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+        timestamp:
+          type: string
+          format: date-time
+        db:
+          type: string
+          enum: [connected, disconnected]
+          description: 仅 CRM 后端
+        vllm:
+          type: string
+          enum: [connected, disconnected]
+          description: 仅 Agent 引擎
+        version:
+          type: string

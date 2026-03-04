@@ -1,0 +1,134 @@
+# Sirus AI CRM — 事件总线契约
+# 实现: Redis Stream
+# 生产者: CRM 后端 (mac_min_8T) 每个写操作发布事件
+# 消费者: Agent 引擎 (4090) + Celery Worker (data_center)
+
+redis:
+  host: 172.16.12.50
+  port: 6379
+  db: 0
+
+# ──────── Stream 定义 ────────
+streams:
+  crm.events:
+    description: CRM 业务事件流
+    max_length: 100000
+    consumer_groups:
+      - name: agent_engine
+        description: Agent 引擎消费（触发主动型Agent）
+      - name: celery_workers
+        description: Celery 异步任务消费（评分/报表/缓存）
+
+# ──────── 事件格式 ────────
+event_schema:
+  common_fields:
+    event_id:
+      type: string
+      format: uuid
+      description: 事件唯一ID
+    event_type:
+      type: string
+      description: 事件类型（见下方枚举）
+    timestamp:
+      type: string
+      format: date-time
+    user_id:
+      type: string
+      description: 操作人ID
+    entity_type:
+      type: string
+      enum: [lead, customer, opportunity, activity, contact]
+    entity_id:
+      type: string
+      format: uuid
+
+  event_types:
+    # 线索事件
+    lead.created:
+      description: 线索创建
+      extra_fields:
+        company_name: { type: string }
+        source: { type: string }
+      triggers:
+        - agent: lead_scoring  # 自动触发线索评分
+        - task: notify_pool_managers
+
+    lead.updated:
+      description: 线索更新
+      extra_fields:
+        changed_fields: { type: array, items: { type: string } }
+
+    lead.converted:
+      description: 线索转客户
+      extra_fields:
+        customer_id: { type: string, description: 新创建的客户ID }
+      triggers:
+        - task: update_conversion_stats
+
+    lead.assigned:
+      description: 线索分配给销售
+      extra_fields:
+        owner_id: { type: string }
+
+    # 客户事件
+    customer.created:
+      description: 客户创建
+      extra_fields:
+        company_name: { type: string }
+        lead_id: { type: string, nullable: true }
+
+    customer.updated:
+      description: 客户更新
+      extra_fields:
+        changed_fields: { type: array, items: { type: string } }
+
+    customer.level_changed:
+      description: 客户等级变更
+      extra_fields:
+        old_level: { type: string }
+        new_level: { type: string }
+      triggers:
+        - agent: customer_insight  # 触发客户画像更新
+
+    # 商机事件
+    opportunity.created:
+      description: 商机创建
+      extra_fields:
+        customer_id: { type: string }
+        amount: { type: number }
+      triggers:
+        - agent: opportunity_predictor  # 触发赢率预测
+
+    opportunity.stage_changed:
+      description: 商机阶段推进
+      extra_fields:
+        old_stage: { type: string }
+        new_stage: { type: string }
+        amount: { type: number }
+      triggers:
+        - agent: opportunity_predictor  # 重新计算赢率
+        - task: push_dingtalk_card      # 推送钉钉互动卡片
+        - task: update_funnel_cache
+
+    opportunity.won:
+      description: 商机赢单
+      extra_fields:
+        amount: { type: number }
+      triggers:
+        - task: update_dashboard
+        - task: notify_management
+
+    opportunity.lost:
+      description: 商机丢单
+      extra_fields:
+        lost_reason: { type: string }
+      triggers:
+        - task: lost_analysis
+
+    # 活动事件
+    activity.created:
+      description: 活动记录创建
+      extra_fields:
+        type: { type: string }
+        customer_id: { type: string, nullable: true }
+        opportunity_id: { type: string, nullable: true }
