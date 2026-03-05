@@ -1,0 +1,107 @@
+# ============================================================
+# Sirus AI-CRM Orchestrator 配置文件
+# ============================================================
+
+orchestrator:
+  mode: sprint            # sprint | continuous
+  current_sprint: 1
+  poll_interval: 10       # 秒 — 主循环轮询间隔
+  max_concurrent: 4       # 最多并行任务数
+  port: 9500              # Dashboard API 端口
+
+# ── aider / LLM 网关 ─────────────────────────────────────
+
+llm:
+  openai_api_base: ${OPENAI_API_BASE}
+  openai_api_key: ${OPENAI_API_KEY}
+  model: openai/claude-opus-4-6
+  timeout: 600            # 单任务 aider 最长秒数
+  max_tokens: 8192
+
+# ── 五台机器 ──────────────────────────────────────────────
+
+machines:
+  4090:
+    host: 172.16.11.194
+    user: user
+    work_dir: ~/ai-crm
+    owned_dirs:
+      - agent/
+    aider_prefix: 'export PATH="$HOME/.local/bin:$PATH"'
+
+  mac_min_8T:
+    host: 172.16.12.50
+    user: edge_sale
+    work_dir: ~/ai-crm
+    owned_dirs:
+      - crm/
+      - frontend/
+    aider_prefix: 'export PATH="$HOME/Library/Python/3.9/bin:$PATH"'
+
+  gateway:
+    host: 172.16.14.215
+    user: realman
+    work_dir: ~/ai-crm
+    owned_dirs:
+      - deploy/nginx/
+      - deploy/dingtalk/
+    aider_prefix: 'source ~/.venv/aider/bin/activate'
+
+  data_center:
+    host: 172.16.14.90
+    user: realman
+    work_dir: ~/ai-crm
+    owned_dirs:
+      - deploy/monitoring/
+      - scripts/
+    aider_prefix: 'export PATH="$HOME/miniconda3/bin:$PATH" && source $HOME/miniconda3/etc/profile.d/conda.sh && conda activate aider'
+
+  orchestrator:
+    host: 172.16.14.201
+    user: realman
+    work_dir: ~/ai-crm
+    owned_dirs:
+      - orchestrator/
+      - tests/
+    aider_prefix: 'export PATH="$HOME/.local/bin:$PATH"'
+
+# ── 任务控制 ──────────────────────────────────────────────
+
+task:
+  max_retries: 3          # 每个任务 (review_retry + test_retry) 最大重试
+  single_task_timeout: 600
+  concurrent_limit: 4
+
+# ── Git ───────────────────────────────────────────────────
+
+git:
+  bare_repo: edge_sale@172.16.12.50:git/ai-crm.git
+  branch: main
+  auto_tag_on_sprint_end: true
+
+# ── 测试 ─────────────────────────────────────────────────
+
+testing:
+  run_on: orchestrator           # 测试在 orchestrator 本地执行
+  pytest_args: "-x -v --tb=short"
+  pass_threshold: 4.0            # 云端多模型加权评分通过线
+  report_dir: reports/
+
+# ── 通知 ─────────────────────────────────────────────────
+
+notification:
+  dingtalk_webhook: ${DINGTALK_WEBHOOK_URL}
+  notify_on:
+    - sprint_start
+    - sprint_end
+    - task_escalated
+    - daily_summary
+  daily_summary_time: "18:00"
+
+# ── 文件路径 ──────────────────────────────────────────────
+
+paths:
+  task_card: docs/07-Sprint任务卡.md
+  design_doc: docs/04-系统概要设计.md
+  contracts_dir: contracts/
+  log_dir: logs/
