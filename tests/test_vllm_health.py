@@ -25,6 +25,24 @@ EXPECTED_MODEL = os.getenv("VLLM_MODEL", "Qwen/Qwen3-30B-A3B")
 REQUEST_TIMEOUT = 10.0
 
 
+def _vllm_is_reachable() -> bool:
+    """Quick probe to check if the vLLM server is reachable and healthy."""
+    try:
+        resp = httpx.get(f"{VLLM_BASE_URL}/v1/models", timeout=5.0)
+        return resp.status_code == 200
+    except (httpx.ConnectError, httpx.TimeoutException, OSError):
+        return False
+
+
+# Skip ALL tests in this module when vLLM is not available.
+# This prevents 502 / ConnectionError failures in CI or on machines
+# where the inference server is not running.
+pytestmark = pytest.mark.skipif(
+    not _vllm_is_reachable(),
+    reason=f"vLLM server not reachable at {VLLM_BASE_URL}",
+)
+
+
 @pytest.fixture
 def base_url() -> str:
     """Return the vLLM server base URL."""

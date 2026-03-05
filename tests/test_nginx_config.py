@@ -276,27 +276,62 @@ class TestNginxSyntax:
         )
         assert result.returncode == 0, f"Docker nginx -t 失败: {result.stderr}"
 
+    def _test_with_local_nginx(self, tmp_path: Path):
+        """使用本地 nginx 验证配置语法。
+
+        创建临时目录模拟所需的系统路径（mime.types 等），
+        避免因缺少系统文件导致误报。
+        """
+        # 创建 nginx -t 所需的最小文件
+        mime_types = tmp_path / "mime.types"
+        mime_types.write_text(
+            "types { text/html html htm; application/json json; "
+            "text/css css; application/javascript js; }\n"
+        )
+
+        html_dir = tmp_path / "html"
+        html_dir.mkdir()
+        (html_dir / "index.html").write_text("<h1>test</h1>")
+
+        # 替换配置中的系统路径为临时路径
+        conf_content = NGINX_CONF.read_text(encoding="utf-8")
+        replacements = {
+            "/etc/nginx/mime.types": str(mime_types),
+            "/usr/share/nginx/html": str(html_dir),
+            "/var/log/nginx/error.log": str(tmp_path / "error.log"),
+            "/var/log/nginx/access.log": str(tmp_path / "access.log"),
+            "/var/run/nginx.pid": str(tmp_path / "nginx.pid"),
+        }
+        for old, new in replacements.items():
+            conf_content = conf_content.replace(old, new)
+
+        test_conf = tmp_path / "nginx.conf"
+        test_conf.write_text(conf_content)
+
+        result = subprocess.run(
+            ["nginx", "-t", "-c", str(test_conf)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result
+
     @pytest.mark.skipif(
         not (shutil.which("nginx") or shutil.which("docker")),
         reason="需要 nginx 或 docker 来验证配置语法",
     )
-    def test_nginx_config_syntax(self):
+    def test_nginx_config_syntax(self, tmp_path: Path):
         """nginx -t 配置语法检查应通过。"""
         if self._nginx_available():
-            result = subprocess.run(
-                ["nginx", "-t", "-c", str(NGINX_CONF.resolve())],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            result = self._test_with_local_nginx(tmp_path)
             if result.returncode == 0:
                 return
-            # 本地 nginx -t 可能因缺少 mime.types 等文件失败，回退到 Docker
+            # 本地 nginx -t 可能因权限等问题失败，回退到 Docker
             if self._docker_available():
                 self._test_with_docker()
             else:
                 pytest.skip(
-                    f"本地 nginx -t 失败（可能缺少 mime.types），且无 docker: {result.stderr}"
+                    f"本地 nginx -t 失败且无 docker 可回退: {result.stderr}"
                 )
         elif self._docker_available():
             self._test_with_docker()
