@@ -300,11 +300,38 @@ class TestRunner:
             return TestResult(passed=False, duration_sec=duration, stdout=stdout)
 
         summary = data.get("summary", {})
+        exitcode = data.get("exitcode", -1)
         total = summary.get("total", 0)
+        collected = summary.get("collected", 0)
         passed_count = summary.get("passed", 0)
         failed_count = summary.get("failed", 0)
         error_count = summary.get("error", 0)
         skipped_count = summary.get("skipped", 0)
+
+        # ── Bug16: 检测 collector errors ──
+        # pytest-json-report 把 collection 失败放在 collectors[] 而非 summary.error
+        collector_errors = []
+        for c in data.get("collectors", []):
+            if c.get("outcome") == "failed":
+                nodeid = c.get("nodeid", "?")
+                longrepr = c.get("longrepr", "")
+                last_line = longrepr.strip().split("\n")[-1] if longrepr else ""
+                collector_errors.append(f"[COLLECT] {nodeid}: {last_line}")
+
+        if collector_errors:
+            log.warning(
+                "pytest 收集阶段有 %d 个错误 (collected=%d, exitcode=%d): %s",
+                len(collector_errors), collected, exitcode,
+                "; ".join(ce[:80] for ce in collector_errors[:5]),
+            )
+            error_count += len(collector_errors)
+
+        # collected=0 且 exitcode!=0 → 没有测试真正运行
+        if collected == 0 and exitcode != 0:
+            log.warning(
+                "pytest collected=0, exitcode=%d → 没有测试真正运行",
+                exitcode,
+            )
 
         # 全部跳过 → 视为未覆盖, 标记 passed=True 但给出警告
         if total > 0 and passed_count == 0 and failed_count == 0 and error_count == 0:
@@ -323,6 +350,9 @@ class TestRunner:
                     crash = call.get("crash", {})
                     msg = crash.get("message", "")
                 failures.append(f"{nodeid}: {msg}")
+
+        # 合并 collector errors 到 failures
+        failures.extend(collector_errors)
 
         return TestResult(
             passed=(failed_count == 0 and error_count == 0),
