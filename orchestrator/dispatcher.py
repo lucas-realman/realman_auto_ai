@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import subprocess as _sp
 import tempfile
 import time
 from pathlib import Path
@@ -30,6 +31,18 @@ class Dispatcher:
     def __init__(self, config: Config):
         self.config = config
         self.machines = config.get_machines()
+        # Bug19: 检测本机 IP, 避免 SCP/SSH 自身导致 Host key verification failed
+        try:
+            out = _sp.check_output(["hostname", "-I"], timeout=3).decode().strip()
+            self._local_ips = set(out.split())
+        except Exception:
+            self._local_ips = set()
+        self._local_ips.add("127.0.0.1")
+        self._local_ips.add("localhost")
+
+    def _is_local(self, machine: MachineInfo) -> bool:
+        """判断目标机器是否是 orchestrator 本机 (Bug19)"""
+        return machine.host in self._local_ips
 
     async def dispatch_task(self, task: CodingTask) -> TaskResult:
         """
@@ -244,7 +257,13 @@ exit $AIDER_EXIT
     async def _scp_content(
         self, machine: MachineInfo, content: str, remote_path: str,
     ) -> None:
-        """将内容通过 scp 写到远程文件"""
+        """将内容通过 scp 写到远程文件; 本机直接写文件 (Bug19)"""
+        if self._is_local(machine):
+            with open(remote_path, "w") as f:
+                f.write(content)
+            log.debug("[本机] 直接写入 %s", remote_path)
+            return
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write(content)
             local_path = f.name
@@ -273,20 +292,28 @@ exit $AIDER_EXIT
         """SSH 执行脚本, 返回 TaskResult
 
         Bug 12 fix v2: 通过 stdin 管道传输脚本，用 bash -s 执行。
-        当 stdin 写完关闭后，bash 收到 EOF，脚本结束后进程自然退出，
-        SSH 连接随之干净关闭（避免 FD 泄漏导致 SSH 挂起）。
+        Bug 19: 当目标是本机时, 直接 bash -s 执行, 不经过 SSH。
         """
-        proc = await asyncio.create_subprocess_exec(
-            "ssh",
-            "-T",
-            "-o", "ConnectTimeout=10",
-            "-o", "ServerAliveInterval=30",
-            f"{machine.user}@{machine.host}",
-            "bash -s",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        if self._is_local(machine):
+            log.debug("[本机] 直接执行 bash 脚本")
+            proc = await asyncio.create_subprocess_exec(
+                "bash", "-s",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        else:
+            proc = await asyncio.create_subprocess_exec(
+                "ssh",
+                "-T",
+                "-o", "ConnectTimeout=10",
+                "-o", "ServerAliveInterval=30",
+                f"{machine.user}@{machine.host}",
+                "bash -s",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(input=script.encode("utf-8")), timeout=timeout,
