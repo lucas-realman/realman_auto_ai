@@ -82,6 +82,12 @@ class Dispatcher:
             else:
                 log.warning("[%s] ❌ 编码失败 (%.1fs, exit=%d)",
                             task.task_id, duration, result.exit_code)
+                if result.stderr:
+                    log.warning("[%s] stderr(tail): %s",
+                                task.task_id, result.stderr[-500:])
+                if result.stdout:
+                    log.warning("[%s] stdout(tail): %s",
+                                task.task_id, result.stdout[-500:])
 
             return result
 

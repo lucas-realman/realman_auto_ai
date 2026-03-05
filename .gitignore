@@ -48,4 +48,4 @@ htmlcov/
 *.bin
 *.gguf
 .aider*
-reports/
+reports/pytest_result.json
