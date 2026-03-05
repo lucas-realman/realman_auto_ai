@@ -116,15 +116,83 @@ echo "  Max latency:  ${MAX_MS} ms"
 echo "  P95 latency:  ${P95_MS} ms"
 echo "  Total tokens: ${TOTAL_TOKENS}"
 
+OVERALL_TPS="0"
 if [ "${TOTAL_TIME_MS}" -gt 0 ]; then
     OVERALL_TPS=$(python3 -c "print(f'{${TOTAL_TOKENS}/(${TOTAL_TIME_MS}/1000):.1f}')")
     echo "  Throughput:   ${OVERALL_TPS} tok/s"
 fi
 
+# --- Pass / Fail ---
 echo ""
-if [ "${P95_MS}" -le 2000 ]; then
-    echo "  [PASS] P95 latency ≤ 2 s  (${P95_MS} ms)"
+PASS_COUNT=0
+FAIL_COUNT=0
+
+TTFT_THRESHOLD="${TTFT_THRESHOLD:-2000}"
+TPS_THRESHOLD="${TPS_THRESHOLD:-20}"
+
+if [ "${P95_MS}" -le "${TTFT_THRESHOLD}" ]; then
+    echo "  [PASS] P95 latency ≤ ${TTFT_THRESHOLD} ms  (actual: ${P95_MS} ms)"
+    PASS_COUNT=$((PASS_COUNT + 1))
 else
-    echo "  [WARN] P95 latency > 2 s  (${P95_MS} ms) — consider tuning vLLM params"
+    echo "  [FAIL] P95 latency > ${TTFT_THRESHOLD} ms  (actual: ${P95_MS} ms)"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+fi
+
+TPS_OK=$(python3 -c "print(1 if float('${OVERALL_TPS}') >= ${TPS_THRESHOLD} else 0)")
+if [ "${TPS_OK}" -eq 1 ]; then
+    echo "  [PASS] Throughput ≥ ${TPS_THRESHOLD} tok/s  (actual: ${OVERALL_TPS} tok/s)"
+    PASS_COUNT=$((PASS_COUNT + 1))
+else
+    echo "  [FAIL] Throughput < ${TPS_THRESHOLD} tok/s  (actual: ${OVERALL_TPS} tok/s)"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+fi
+
+# --- Write JSON report ---
+REPORT_DIR="${PROJECT_ROOT}/reports"
+mkdir -p "${REPORT_DIR}"
+REPORT_FILE="${REPORT_DIR}/benchmark_$(date +%Y%m%d_%H%M%S).json"
+
+python3 -c "
+import json, datetime
+report = {
+    'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'model': '${MODEL}',
+    'server': '${BASE_URL}',
+    'num_requests': ${NUM_REQUESTS},
+    'max_tokens': ${MAX_TOKENS},
+    'results': {
+        'successful': ${COUNT},
+        'avg_latency_ms': ${AVG_MS},
+        'min_latency_ms': ${MIN_MS},
+        'max_latency_ms': ${MAX_MS},
+        'p95_latency_ms': ${P95_MS},
+        'total_tokens': ${TOTAL_TOKENS},
+        'throughput_tps': float('${OVERALL_TPS}'),
+    },
+    'thresholds': {
+        'ttft_ms': ${TTFT_THRESHOLD},
+        'throughput_tps': ${TPS_THRESHOLD},
+    },
+    'pass': ${FAIL_COUNT} == 0,
+    'pass_count': ${PASS_COUNT},
+    'fail_count': ${FAIL_COUNT},
+}
+with open('${REPORT_FILE}', 'w') as f:
+    json.dump(report, f, indent=2)
+print(f'  Report: ${REPORT_FILE}')
+"
+
+echo ""
+if [ "${FAIL_COUNT}" -eq 0 ]; then
+    echo "  ✅ ALL CHECKS PASSED (${PASS_COUNT}/${PASS_COUNT})"
+else
+    echo "  ❌ ${FAIL_COUNT} CHECK(S) FAILED"
+    echo ""
+    echo "  Tuning suggestions:"
+    echo "    - Reduce VLLM_MAX_MODEL_LEN (currently ${MAX_MODEL_LEN:-8192})"
+    echo "    - Increase VLLM_GPU_UTIL (currently ${GPU_MEMORY_UTIL:-0.85})"
+    echo "    - Reduce VLLM_MAX_NUM_SEQS (currently ${MAX_NUM_SEQS:-64})"
+    echo "    - Check GPU memory with: bash scripts/check_gpu.sh"
 fi
 echo "=========================================="
+exit "${FAIL_COUNT}"
