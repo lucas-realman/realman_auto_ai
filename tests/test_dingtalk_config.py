@@ -108,8 +108,12 @@ _PLACEHOLDER_SECRETS = {
 
 
 @pytest.mark.skipif(
-    not os.environ.get("DINGTALK_APP_KEY"),
-    reason="钉钉环境变量未配置 — 跳过 (在部署机器上运行)",
+    not (
+        os.environ.get("DINGTALK_APP_KEY")
+        and os.environ.get("DINGTALK_APP_SECRET")
+        and os.environ.get("DINGTALK_AGENT_ID")
+    ),
+    reason="钉钉环境变量未完整配置（需要 DINGTALK_APP_KEY, DINGTALK_APP_SECRET, DINGTALK_AGENT_ID）— 跳过 (在部署机器上运行)",
 )
 class TestDingtalkConfigExists:
     """验证钉钉配置环境变量是否已设置。"""
