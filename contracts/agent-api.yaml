@@ -165,3 +165,9 @@ components:
         redis: { type: string, enum: [connected, disconnected] }
         timestamp: { type: string, format: date-time }
         version: { type: string }
+Please add the following existing files to the chat so I can edit them with SEARCH/REPLACE blocks:
+
+- contracts/agent-api.yaml
+- contracts/agent-tools.yaml
+
+Also, please confirm whether your earlier "READ ONLY" restriction for these two files is now lifted for this task.
