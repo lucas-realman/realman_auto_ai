@@ -27,15 +27,24 @@ class GitOps:
     # ── Pull ──
 
     def pull(self, rebase: bool = True) -> bool:
-        """拉取远端最新代码"""
-        cmd = ["git", "pull"]
-        if rebase:
-            cmd.append("--rebase")
-        cmd += ["origin", self.branch]
-        ok, out = self._run(cmd)
-        if not ok:
-            log.warning("git pull 失败: %s", out)
-        return ok
+        """
+        拉取远端最新代码。
+
+        先从 edge (裸仓库, aider 输出推送到此处),
+        再从 origin (GitHub), 确保两边代码都合入。
+        """
+        pulled = False
+        for remote in ["edge", "origin"]:
+            cmd = ["git", "pull"]
+            if rebase:
+                cmd.append("--rebase")
+            cmd += [remote, self.branch]
+            ok, out = self._run(cmd)
+            if ok:
+                pulled = True
+            else:
+                log.warning("git pull %s 失败: %s", remote, out)
+        return pulled
 
     # ── Add + Commit ──
 

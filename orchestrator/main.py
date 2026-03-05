@@ -89,7 +89,9 @@ class Orchestrator:
         if not Path(task_card_path).is_absolute():
             task_card_path = str(self.config.repo_root / task_card_path)
 
-        tasks = self.doc_parser.parse_task_card(task_card_path)
+        tasks = self.doc_parser.parse_task_card(
+            task_card_path, sprint=int(sprint_id),
+        )
         if not tasks:
             log.error("未解析到任何任务, 退出")
             await self.reporter.notify_error("未解析到任何任务")

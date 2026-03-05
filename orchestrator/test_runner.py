@@ -233,26 +233,19 @@ class TestRunner:
     # ── 测试路径发现 ──
 
     def _find_tests_for_task(self, task: CodingTask) -> List[str]:
-        """根据任务目标目录推断对应的测试文件路径"""
-        import re as _re
+        """
+        根据任务目标目录推断对应的 **单元/集成** 测试文件路径。
 
+        注意: 验收测试 (tests/acceptance/) 不在此处匹配,
+        它们由 run_acceptance_tests() 专门管理 (会设置 RUN_ACCEPTANCE=1)。
+        """
         target = task.target_dir.rstrip("/").replace("/", "_")
 
         candidates = [
             f"tests/test_{target}.py",               # tests/test_crm.py
             f"tests/test_{target}/",                  # tests/test_crm/
             f"tests/{target}/",                       # tests/crm/
-            f"tests/acceptance/test_{target}.py",     # tests/acceptance/test_crm.py
         ]
-
-        # 按 Sprint 编号匹配验收测试 (S1_W2 → test_sprint_1_2.py)
-        m = _re.match(r"S(\d+)_", task.task_id)
-        if m:
-            sn = int(m.group(1))
-            pair_start = ((sn - 1) // 2) * 2 + 1
-            candidates.append(
-                f"tests/acceptance/test_sprint_{pair_start}_{pair_start + 1}.py"
-            )
 
         found = []
         for c in candidates:
@@ -260,7 +253,7 @@ class TestRunner:
             if path.exists():
                 found.append(c)
 
-        # 没找到特定测试, 只运行单元测试 (排除 acceptance)
+        # 没找到特定测试, 运行全部单元测试 (排除 acceptance)
         if not found:
             found = ["tests/", "--ignore=tests/acceptance"]
 
@@ -269,16 +262,17 @@ class TestRunner:
     # ── Git ──
 
     def _git_pull(self) -> None:
-        """拉取最新代码"""
-        try:
-            subprocess.run(
-                ["git", "pull", "--rebase", "origin", self.config.git_branch],
-                cwd=str(self.repo_root),
-                capture_output=True,
-                timeout=60,
-            )
-        except Exception as e:
-            log.warning("git pull 失败: %s", e)
+        """拉取最新代码 (先 edge, 再 origin)"""
+        for remote in ["edge", "origin"]:
+            try:
+                subprocess.run(
+                    ["git", "pull", "--rebase", remote, self.config.git_branch],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    timeout=60,
+                )
+            except Exception as e:
+                log.warning("git pull %s 失败: %s", remote, e)
 
     # ── 结果解析 ──
 
@@ -297,6 +291,14 @@ class TestRunner:
         passed_count = summary.get("passed", 0)
         failed_count = summary.get("failed", 0)
         error_count = summary.get("error", 0)
+        skipped_count = summary.get("skipped", 0)
+
+        # 全部跳过 → 视为未覆盖, 标记 passed=True 但给出警告
+        if total > 0 and passed_count == 0 and failed_count == 0 and error_count == 0:
+            log.warning(
+                "所有 %d 个测试均被跳过 (skipped=%d), 无真实断言覆盖",
+                total, skipped_count,
+            )
 
         failures = []
         for test in data.get("tests", []):
@@ -329,11 +331,12 @@ class TestRunner:
         output = proc.stdout + "\n" + proc.stderr
         passed = proc.returncode == 0
 
-        # 解析 "X passed, Y failed, Z error"
+        # 解析 "X passed, Y failed, Z error, W skipped"
         total = 0
         passed_count = 0
         failed_count = 0
         error_count = 0
+        skipped_count = 0
 
         m = re.search(r"(\d+) passed", output)
         if m:
@@ -349,6 +352,18 @@ class TestRunner:
         if m:
             error_count = int(m.group(1))
             total += error_count
+
+        m = re.search(r"(\d+) skipped", output)
+        if m:
+            skipped_count = int(m.group(1))
+            total += skipped_count
+
+        # 全部跳过警告
+        if total > 0 and passed_count == 0 and failed_count == 0 and error_count == 0:
+            log.warning(
+                "所有 %d 个测试均被跳过 (skipped=%d), 无真实断言覆盖",
+                total, skipped_count,
+            )
 
         # 提取失败信息
         failures = []
