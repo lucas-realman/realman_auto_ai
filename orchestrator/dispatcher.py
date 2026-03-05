@@ -165,14 +165,7 @@ class Dispatcher:
         # 任务卡也作为 --read
         contract_reads += f" --read {self.config.task_card_path}"
 
-        # 用临时文件捕获输出，避免后台进程继承 SSH stdout/stderr FD (Bug 12)
-        out_file = f"/tmp/aider_out_{task.task_id}"
         return f"""
-# ── Bug 12 fix: 输出重定向到文件，防止 SSH FD 泄漏 ──
-_OUT_FILE='{out_file}'
-exec 3>&1 4>&2
-exec > "$_OUT_FILE" 2>&1
-
 {machine.aider_prefix}
 export OPENAI_API_BASE='{api_base}'
 export OPENAI_API_KEY='{api_key}'
@@ -237,12 +230,6 @@ fi
 
 # 清理
 rm -f {msg_remote_path}
-
-# ── Bug 12 fix: 恢复原始 stdout/stderr，输出捕获内容，干净退出 ──
-exec 1>&3 2>&4
-exec 3>&- 4>&-
-cat "$_OUT_FILE" 2>/dev/null
-rm -f "$_OUT_FILE"
 exit $AIDER_EXIT
 """
 
@@ -277,19 +264,26 @@ exit $AIDER_EXIT
         script: str,
         timeout: int = 600,
     ) -> TaskResult:
-        """SSH 执行脚本, 返回 TaskResult"""
+        """SSH 执行脚本, 返回 TaskResult
+
+        Bug 12 fix v2: 通过 stdin 管道传输脚本，用 bash -s 执行。
+        当 stdin 写完关闭后，bash 收到 EOF，脚本结束后进程自然退出，
+        SSH 连接随之干净关闭（避免 FD 泄漏导致 SSH 挂起）。
+        """
         proc = await asyncio.create_subprocess_exec(
             "ssh",
+            "-T",
             "-o", "ConnectTimeout=10",
             "-o", "ServerAliveInterval=30",
             f"{machine.user}@{machine.host}",
-            script,
+            "bash -s",
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
 
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout,
+            proc.communicate(input=script.encode("utf-8")), timeout=timeout,
         )
 
         return TaskResult(
