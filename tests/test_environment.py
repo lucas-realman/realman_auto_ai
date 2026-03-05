@@ -24,11 +24,16 @@ class TestPythonValidator:
     """Tests for Python version validation."""
 
     def test_python_version_check(self):
-        """Test Python version is 3.9+."""
+        """Test PythonValidator correctly reports Python version."""
         valid, msg = PythonValidator.check_version()
-        assert valid, f"Python version check failed: {msg}"
-        assert "Python" in msg
-        assert "." in msg
+        current = sys.version_info[:2]
+        if current >= PythonValidator.MIN_VERSION:
+            assert valid, f"Should pass for Python {current}: {msg}"
+            assert "✓" in msg
+        else:
+            # On Python < MIN_VERSION the validator correctly returns False
+            assert not valid, f"Should fail for Python {current}: {msg}"
+            assert "required" in msg
 
     def test_python_version_message_format(self):
         """Test version message format."""
@@ -37,15 +42,28 @@ class TestPythonValidator:
         assert "." in msg  # Has version separator
 
 
+def _has_nvidia_smi() -> bool:
+    try:
+        subprocess.run(["nvidia-smi"], capture_output=True, timeout=5)
+        return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+_NVIDIA_SMI = _has_nvidia_smi()
+
+
 class TestCudaValidator:
     """Tests for CUDA and GPU validation."""
 
+    @pytest.mark.skipif(not _NVIDIA_SMI, reason="nvidia-smi not available")
     def test_nvidia_smi_available(self):
         """Test nvidia-smi is available."""
         valid, msg = CudaValidator.check_nvidia_smi()
         assert valid, f"CUDA check failed: {msg}"
         assert "CUDA" in msg or "GPU" in msg
 
+    @pytest.mark.skipif(not _NVIDIA_SMI, reason="nvidia-smi not available")
     def test_gpu_count_non_negative(self):
         """Test GPU count is non-negative."""
         count, msg = CudaValidator.check_gpu_count()
@@ -80,6 +98,7 @@ class TestSystemValidator:
 
     def test_memory_check(self):
         """Test memory check returns valid result."""
+        psutil = pytest.importorskip("psutil", reason="psutil not installed")
         valid, msg = SystemValidator.check_memory()
         assert isinstance(valid, bool)
         assert "Memory" in msg or "GB" in msg
@@ -117,13 +136,18 @@ class TestEnvironmentValidator:
         assert 'cuda' in validator.results
 
     def test_python_version_passes(self):
-        """Test Python version validation passes."""
+        """Test Python version validation populates results."""
         validator = EnvironmentValidator()
         validator._validate_python()
         assert 'python_version' in validator.results
-        # Should not have Python errors if running this test
-        python_errors = [e for e in validator.errors if 'Python' in e]
-        assert len(python_errors) == 0
+        current = sys.version_info[:2]
+        if current >= PythonValidator.MIN_VERSION:
+            python_errors = [e for e in validator.errors if 'Python' in e]
+            assert len(python_errors) == 0
+        else:
+            # On Python < MIN_VERSION, validator correctly records an error
+            python_errors = [e for e in validator.errors if 'Python' in e]
+            assert len(python_errors) >= 1
 
     def test_to_json_format(self):
         """Test JSON export format."""

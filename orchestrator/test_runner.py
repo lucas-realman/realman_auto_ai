@@ -262,12 +262,25 @@ class TestRunner:
     # ── Git ──
 
     def _git_pull(self) -> None:
-        """拉取最新代码 (先 edge, 再 origin)"""
+        """拉取最新代码 (先清理工作目录, 再 edge→origin pull)"""
+        cwd = str(self.repo_root)
+        # 先清理未提交的变更, 防止 rebase 失败
+        for cleanup_cmd in [
+            ["git", "checkout", "--", "."],
+            ["git", "clean", "-fd"],
+        ]:
+            try:
+                subprocess.run(
+                    cleanup_cmd, cwd=cwd, capture_output=True, timeout=30,
+                )
+            except Exception as e:
+                log.warning("git cleanup %s 失败: %s", cleanup_cmd, e)
+
         for remote in ["edge", "origin"]:
             try:
                 subprocess.run(
                     ["git", "pull", "--rebase", remote, self.config.git_branch],
-                    cwd=str(self.repo_root),
+                    cwd=cwd,
                     capture_output=True,
                     timeout=60,
                 )

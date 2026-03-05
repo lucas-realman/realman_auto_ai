@@ -12,7 +12,7 @@ import subprocess
 import sys
 import json
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class PythonValidator:
         return False, f"Python {current[0]}.{current[1]} (required: {PythonValidator.MIN_VERSION[0]}.{PythonValidator.MIN_VERSION[1]}+)"
 
     @staticmethod
-    def check_packages(required: list[str]) -> Tuple[bool, Dict[str, str]]:
+    def check_packages(required: List[str]) -> Tuple[bool, Dict[str, str]]:
         """
         Check if required packages are installed.
         
