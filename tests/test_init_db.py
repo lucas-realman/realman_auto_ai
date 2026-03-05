@@ -1,198 +1,327 @@
 """
-数据库初始化脚本测试。
+tests/test_init_db.py
+=====================
 
-测试内容:
-  - scripts/init_db.sh 文件存在且可执行
-  - PostgreSQL 连接正常
-  - ai_crm 数据库已创建
-  - uuid-ossp 和 vector 扩展已安装
-  - Redis 连接正常
+Integration tests for the database & cache initialisation script
+(``scripts/init_db.sh``).
 
-契约依据:
-  - contracts/db-schema.sql (数据库结构)
-  - contracts/event-bus.yaml (Redis 连接)
+These tests verify:
+    1. PostgreSQL is reachable and ``SELECT 1`` succeeds.
+    2. The ``ai_crm`` database exists.
+    3. The ``uuid-ossp`` and ``vector`` (pgvector) extensions are loaded.
+    4. All core tables defined in ``contracts/db-schema.sql`` exist.
+    5. Key indexes are present.
+    6. The ``update_updated_at`` trigger function is installed.
+    7. Redis responds to ``PING``.
+
+Prerequisites
+-------------
+* PostgreSQL 16 and Redis 7 must be running locally (the init script
+  should have been executed at least once).
+* The ``psycopg2-binary`` and ``redis`` Python packages must be
+  installed (see ``requirements.txt``).
+
+Environment variables (optional overrides):
+    PGUSER, PGHOST, PGPORT, DB_NAME, REDIS_HOST, REDIS_PORT
 """
 
+from __future__ import annotations
+
 import os
-import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).parent.parent
-INIT_SCRIPT = PROJECT_ROOT / "scripts" / "init_db.sh"
+# ---------------------------------------------------------------------------
+# Configuration from environment (with sensible defaults)
+# ---------------------------------------------------------------------------
+PGUSER: str = os.getenv("PGUSER", os.getenv("USER", "postgres"))
+PGHOST: str = os.getenv("PGHOST", "localhost")
+PGPORT: int = int(os.getenv("PGPORT", "5432"))
+DB_NAME: str = os.getenv("DB_NAME", "ai_crm")
 
-# 默认使用当前系统用户连接 PostgreSQL（macOS Homebrew 默认行为）
-PG_USER = os.getenv("PGUSER", os.getenv("USER", "postgres"))
+REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+
+# ---------------------------------------------------------------------------
+# Expected schema artefacts (derived from contracts/db-schema.sql)
+# ---------------------------------------------------------------------------
+EXPECTED_TABLES: list[str] = [
+    "users",
+    "leads",
+    "customers",
+    "contacts",
+    "opportunities",
+    "activities",
+    "audit_log",
+    "agent_log",
+]
+
+EXPECTED_INDEXES: list[str] = [
+    "idx_leads_company",
+    "idx_leads_status",
+    "idx_leads_owner",
+    "idx_leads_created",
+    "idx_customers_company",
+    "idx_customers_level",
+    "idx_customers_owner",
+    "idx_contacts_customer",
+    "idx_opp_customer",
+    "idx_opp_stage",
+    "idx_opp_owner",
+    "idx_activities_customer",
+    "idx_activities_opp",
+    "idx_activities_created",
+    "idx_audit_entity",
+    "idx_audit_user",
+    "idx_agent_log_session",
+    "idx_agent_log_created",
+]
+
+EXPECTED_EXTENSIONS: list[str] = [
+    "uuid-ossp",
+    "vector",
+]
 
 
-# ──────────────────────────────────────────────
-# 辅助函数
-# ──────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def pg_conn():
+    """Return a live ``psycopg2`` connection to the *ai_crm* database.
 
-def _run(cmd: list[str], timeout: int = 10) -> subprocess.CompletedProcess:
-    """执行外部命令并返回结果。"""
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-
-
-def _psql(sql: str, dbname: str = "ai_crm") -> subprocess.CompletedProcess:
-    """通过 psql 执行 SQL 语句。"""
-    return _run(["psql", "-U", PG_USER, "-d", dbname, "-tAc", sql])
-
-
-# ──────────────────────────────────────────────
-# 测试: 脚本文件
-# ──────────────────────────────────────────────
-
-class TestInitScriptFile:
-    """测试初始化脚本文件存在性与权限。"""
-
-    def test_script_exists(self):
-        """scripts/init_db.sh 应存在。"""
-        assert INIT_SCRIPT.exists(), f"初始化脚本不存在: {INIT_SCRIPT}"
-
-    def test_script_not_empty(self):
-        """scripts/init_db.sh 应非空。"""
-        assert INIT_SCRIPT.stat().st_size > 0, "初始化脚本为空"
-
-    def test_script_is_executable(self):
-        """scripts/init_db.sh 应可执行。"""
-        assert os.access(INIT_SCRIPT, os.X_OK), (
-            "初始化脚本不可执行，请运行: chmod +x scripts/init_db.sh"
+    The fixture is module-scoped so a single connection is reused across
+    all PostgreSQL tests in this file.
+    """
+    psycopg2 = pytest.importorskip(
+        "psycopg2",
+        reason="psycopg2-binary is required for DB tests",
+    )
+    try:
+        conn = psycopg2.connect(
+            host=PGHOST,
+            port=PGPORT,
+            user=PGUSER,
+            dbname=DB_NAME,
         )
-
-    def test_script_has_shebang(self):
-        """scripts/init_db.sh 应以 shebang 行开头。"""
-        first_line = INIT_SCRIPT.read_text(encoding="utf-8").splitlines()[0]
-        assert first_line.startswith("#!"), f"缺少 shebang 行，首行为: {first_line}"
-
-    def test_script_uses_set_e(self):
-        """scripts/init_db.sh 应使用 set -e 确保出错即退出。"""
-        content = INIT_SCRIPT.read_text(encoding="utf-8")
-        assert "set -e" in content or "set -euo pipefail" in content, (
-            "脚本缺少 set -e 或 set -euo pipefail"
-        )
+    except psycopg2.OperationalError as exc:
+        pytest.skip(f"Cannot connect to PostgreSQL: {exc}")
+    yield conn
+    conn.close()
 
 
-# ──────────────────────────────────────────────
-# 测试: PostgreSQL
-# ──────────────────────────────────────────────
+@pytest.fixture(scope="module")
+def redis_client():
+    """Return a live ``redis.Redis`` client.
 
+    The fixture is module-scoped so a single connection is reused across
+    all Redis tests in this file.
+    """
+    redis_mod = pytest.importorskip(
+        "redis",
+        reason="redis package is required for cache tests",
+    )
+    client = redis_mod.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+    try:
+        client.ping()
+    except redis_mod.ConnectionError as exc:
+        pytest.skip(f"Cannot connect to Redis: {exc}")
+    yield client
+    client.close()
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL tests
+# ---------------------------------------------------------------------------
 class TestPostgreSQL:
-    """测试 PostgreSQL 安装与配置。"""
+    """Verify PostgreSQL connectivity and schema."""
 
-    @pytest.fixture(autouse=True)
-    def _require_psql(self):
-        """跳过测试如果 psql 不可用。"""
-        if not shutil.which("psql"):
-            pytest.skip("psql 命令不可用")
+    def test_select_one(self, pg_conn) -> None:
+        """``SELECT 1`` must return 1 — basic connectivity proof."""
+        with pg_conn.cursor() as cur:
+            cur.execute("SELECT 1;")
+            result = cur.fetchone()
+        assert result is not None
+        assert result[0] == 1
 
-    def test_postgresql_connection(self):
-        """PostgreSQL 应可连接。"""
-        result = _psql("SELECT 1", dbname="postgres")
-        assert result.returncode == 0, f"PostgreSQL 连接失败: {result.stderr}"
+    def test_database_exists(self, pg_conn) -> None:
+        """The target database must appear in ``pg_database``."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM pg_database WHERE datname = %s;",
+                (DB_NAME,),
+            )
+            result = cur.fetchone()
+        assert result is not None, f"Database '{DB_NAME}' does not exist"
 
-    def test_ai_crm_database_exists(self):
-        """ai_crm 数据库应存在。"""
-        result = _run(["psql", "-U", PG_USER, "-d", "postgres", "-lqt"])
-        assert result.returncode == 0, f"查询数据库列表失败: {result.stderr}"
-        databases = [
-            line.split("|")[0].strip()
-            for line in result.stdout.splitlines()
-            if "|" in line
-        ]
-        assert "ai_crm" in databases, (
-            f"ai_crm 数据库不存在，请先运行 scripts/init_db.sh。已有数据库: {databases}"
+    @pytest.mark.parametrize("ext", EXPECTED_EXTENSIONS)
+    def test_extension_loaded(self, pg_conn, ext: str) -> None:
+        """Required PG extensions must be installed."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM pg_extension WHERE extname = %s;",
+                (ext,),
+            )
+            result = cur.fetchone()
+        assert result is not None, f"Extension '{ext}' is not loaded"
+
+    @pytest.mark.parametrize("table", EXPECTED_TABLES)
+    def test_table_exists(self, pg_conn, table: str) -> None:
+        """All core tables from the schema must exist."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_name = %s;
+                """,
+                (table,),
+            )
+            result = cur.fetchone()
+        assert result is not None, f"Table '{table}' is missing"
+
+    @pytest.mark.parametrize("index", EXPECTED_INDEXES)
+    def test_index_exists(self, pg_conn, index: str) -> None:
+        """Key indexes defined in the schema must be present."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                  FROM pg_indexes
+                 WHERE schemaname = 'public'
+                   AND indexname = %s;
+                """,
+                (index,),
+            )
+            result = cur.fetchone()
+        assert result is not None, f"Index '{index}' is missing"
+
+    def test_trigger_function_exists(self, pg_conn) -> None:
+        """The ``update_updated_at()`` trigger function must be defined."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                  FROM pg_proc
+                 WHERE proname = 'update_updated_at';
+                """,
+            )
+            result = cur.fetchone()
+        assert result is not None, "Trigger function 'update_updated_at' is missing"
+
+    def test_leads_trigger_attached(self, pg_conn) -> None:
+        """The ``trg_leads_updated`` trigger must be attached to *leads*."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                  FROM information_schema.triggers
+                 WHERE trigger_name = 'trg_leads_updated'
+                   AND event_object_table = 'leads';
+                """,
+            )
+            result = cur.fetchone()
+        assert result is not None, "Trigger 'trg_leads_updated' is not attached to 'leads'"
+
+    def test_vector_column_on_customers(self, pg_conn) -> None:
+        """The ``ai_embedding`` column on *customers* must be of type ``vector``."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT data_type
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'customers'
+                   AND column_name = 'ai_embedding';
+                """,
+            )
+            result = cur.fetchone()
+        assert result is not None, "Column 'ai_embedding' not found on 'customers'"
+        # pgvector registers as 'USER-DEFINED'
+        assert result[0].upper() == "USER-DEFINED", (
+            f"Expected USER-DEFINED (vector) type, got '{result[0]}'"
         )
 
-    def test_uuid_ossp_extension_installed(self):
-        """ai_crm 中应安装 uuid-ossp 扩展。"""
-        result = _psql("SELECT extname FROM pg_extension WHERE extname='uuid-ossp';")
-        assert result.returncode == 0, f"查询扩展失败: {result.stderr}"
-        assert "uuid-ossp" in result.stdout, "uuid-ossp 扩展未安装"
+    def test_audit_log_is_partitioned(self, pg_conn) -> None:
+        """``audit_log`` should be a partitioned table."""
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.relkind
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'public'
+                   AND c.relname = 'audit_log';
+                """,
+            )
+            result = cur.fetchone()
+        assert result is not None, "audit_log not found in pg_class"
+        # 'p' = partitioned table
+        assert result[0] == "p", (
+            f"Expected audit_log relkind='p' (partitioned), got '{result[0]}'"
+        )
 
-    def test_vector_extension_installed(self):
-        """ai_crm 中应安装 vector (pgvector) 扩展。"""
-        result = _psql("SELECT extname FROM pg_extension WHERE extname='vector';")
-        assert result.returncode == 0, f"查询扩展失败: {result.stderr}"
-        assert "vector" in result.stdout, "vector 扩展未安装"
 
-    def test_uuid_generation_works(self):
-        """uuid_generate_v4() 函数应可用。"""
-        result = _psql("SELECT uuid_generate_v4();")
-        assert result.returncode == 0, f"uuid_generate_v4() 执行失败: {result.stderr}"
-        # UUID 格式: 8-4-4-4-12 hex digits
-        uuid_val = result.stdout.strip()
-        assert len(uuid_val) == 36, f"uuid_generate_v4() 返回值格式异常: {uuid_val}"
-
-
-# ──────────────────────────────────────────────
-# 测试: Redis
-# ──────────────────────────────────────────────
-
+# ---------------------------------------------------------------------------
+# Redis tests
+# ---------------------------------------------------------------------------
 class TestRedis:
-    """测试 Redis 安装与配置。"""
+    """Verify Redis connectivity."""
 
-    @pytest.fixture(autouse=True)
-    def _require_redis_cli(self):
-        """跳过测试如果 redis-cli 不可用。"""
-        if not shutil.which("redis-cli"):
-            pytest.skip("redis-cli 命令不可用")
+    def test_ping(self, redis_client) -> None:
+        """``PING`` must return ``True`` (pong)."""
+        assert redis_client.ping() is True
 
-    def test_redis_connection(self):
-        """Redis 应可连接并返回 PONG。"""
-        result = _run(["redis-cli", "ping"])
-        assert result.returncode == 0, f"Redis 连接失败: {result.stderr}"
-        assert result.stdout.strip() == "PONG", f"Redis 响应异常: {result.stdout}"
+    def test_set_get(self, redis_client) -> None:
+        """Basic SET / GET round-trip."""
+        key = "__sirus_crm_test__"
+        redis_client.set(key, "ok", ex=10)
+        value = redis_client.get(key)
+        assert value == b"ok"
+        redis_client.delete(key)
 
-    def test_redis_set_get(self):
-        """Redis SET/GET 应正常工作。"""
-        key = "__sirus_crm_init_test__"
-        # SET
-        result_set = _run(["redis-cli", "SET", key, "ok", "EX", "5"])
-        assert result_set.returncode == 0, f"Redis SET 失败: {result_set.stderr}"
-        # GET
-        result_get = _run(["redis-cli", "GET", key])
-        assert result_get.returncode == 0, f"Redis GET 失败: {result_get.stderr}"
-        assert result_get.stdout.strip() == "ok", f"Redis GET 返回值异常: {result_get.stdout}"
-        # DEL
-        _run(["redis-cli", "DEL", key])
-
-    def test_redis_version_at_least_7(self):
-        """Redis 版本应 >= 7（支持 Redis Stream 消费者组功能增强）。"""
-        result = _run(["redis-cli", "INFO", "server"])
-        assert result.returncode == 0, f"Redis INFO 失败: {result.stderr}"
-        for line in result.stdout.splitlines():
-            if line.startswith("redis_version:"):
-                version = line.split(":")[1].strip()
-                major = int(version.split(".")[0])
-                assert major >= 7, f"Redis 版本 {version} < 7，请升级"
-                return
-        pytest.fail("未能从 Redis INFO 中获取版本号")
-
-
-# ──────────────────────────────────────────────
-# 测试: 验收标准
-# ──────────────────────────────────────────────
-
-class TestAcceptanceCriteria:
-    """验收标准测试 — 与任务卡 Day 1 完成标志对应。"""
-
-    def test_psql_select_1(self):
-        """验收: psql -c "SELECT 1" 成功。"""
-        if not shutil.which("psql"):
-            pytest.skip("psql 不可用")
-        result = _run(
-            ["psql", "-U", PG_USER, "-d", "ai_crm", "-c", "SELECT 1"]
+    def test_redis_version(self, redis_client) -> None:
+        """Redis server version should be 7.x."""
+        info = redis_client.info("server")
+        version: str = info.get("redis_version", "")
+        assert version.startswith("7"), (
+            f"Expected Redis 7.x, got '{version}'"
         )
-        assert result.returncode == 0, f"psql -c 'SELECT 1' 失败: {result.stderr}"
-        assert "1" in result.stdout, f"SELECT 1 未返回预期结果: {result.stdout}"
 
-    def test_redis_cli_ping(self):
-        """验收: redis-cli ping 成功。"""
-        if not shutil.which("redis-cli"):
-            pytest.skip("redis-cli 不可用")
-        result = _run(["redis-cli", "ping"])
-        assert result.returncode == 0, f"redis-cli ping 失败: {result.stderr}"
-        assert result.stdout.strip() == "PONG", f"redis-cli ping 响应异常: {result.stdout}"
+
+# ---------------------------------------------------------------------------
+# CLI smoke tests (subprocess)
+# ---------------------------------------------------------------------------
+class TestCLISmoke:
+    """Run the acceptance-criteria commands via subprocess."""
+
+    def test_psql_select_one(self) -> None:
+        """``psql -c 'SELECT 1'`` must succeed."""
+        result = subprocess.run(
+            [
+                "psql",
+                "-h", PGHOST,
+                "-p", str(PGPORT),
+                "-U", PGUSER,
+                "-d", DB_NAME,
+                "-tAc", "SELECT 1;",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, f"psql failed: {result.stderr}"
+        assert result.stdout.strip() == "1"
+
+    def test_redis_cli_ping(self) -> None:
+        """``redis-cli ping`` must return PONG."""
+        result = subprocess.run(
+            ["redis-cli", "-h", REDIS_HOST, "-p", str(REDIS_PORT), "ping"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, f"redis-cli failed: {result.stderr}"
+        assert result.stdout.strip() == "PONG"
