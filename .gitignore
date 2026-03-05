@@ -43,7 +43,8 @@ htmlcov/
 .pytest_cache/
 
 # Model files (too large for Git)
-models/
+/models/
 *.safetensors
 *.bin
 *.gguf
+.aider*
