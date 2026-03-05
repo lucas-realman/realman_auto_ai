@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -82,7 +83,7 @@ class AutoReviewer:
             # py_compile
             try:
                 proc = subprocess.run(
-                    ["python", "-m", "py_compile", str(full_path)],
+                    [sys.executable, "-m", "py_compile", str(full_path)],
                     capture_output=True, text=True, timeout=30,
                 )
                 if proc.returncode != 0:
@@ -124,7 +125,7 @@ class AutoReviewer:
         return (
             "静态检查发现以下错误, 请修复:\n\n"
             + "\n".join(f"- {i}" for i in issues)
-            + "\n\n确保所有 .py 文件可通过 python -m py_compile 编译。"
+            + "\n\n确保所有 .py 文件可通过 py_compile 编译。"
         )
 
     # ── Layer 2: 契约对齐 ──
