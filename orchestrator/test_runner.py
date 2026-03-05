@@ -234,7 +234,8 @@ class TestRunner:
 
     def _find_tests_for_task(self, task: CodingTask) -> List[str]:
         """根据任务目标目录推断对应的测试文件路径"""
-        tests_dir = self.repo_root / "tests"
+        import re as _re
+
         target = task.target_dir.rstrip("/").replace("/", "_")
 
         candidates = [
@@ -244,15 +245,24 @@ class TestRunner:
             f"tests/acceptance/test_{target}.py",     # tests/acceptance/test_crm.py
         ]
 
+        # 按 Sprint 编号匹配验收测试 (S1_W2 → test_sprint_1_2.py)
+        m = _re.match(r"S(\d+)_", task.task_id)
+        if m:
+            sn = int(m.group(1))
+            pair_start = ((sn - 1) // 2) * 2 + 1
+            candidates.append(
+                f"tests/acceptance/test_sprint_{pair_start}_{pair_start + 1}.py"
+            )
+
         found = []
         for c in candidates:
             path = self.repo_root / c
             if path.exists():
                 found.append(c)
 
-        # 没找到特定测试, 运行全部 (排除 acceptance)
+        # 没找到特定测试, 只运行单元测试 (排除 acceptance)
         if not found:
-            found = ["tests/"]
+            found = ["tests/", "--ignore=tests/acceptance"]
 
         return found
 
