@@ -2,21 +2,37 @@
 
 Produces structured JSON-style log records so they can be collected by
 the monitoring stack on data_center (W4).
+
+Call :func:`setup_logging` once at application startup (inside
+``main.py``).  All modules under the ``agent`` package will inherit
+this configuration.
 """
 
 import logging
 import sys
+from typing import Optional
 
-from agent.config import settings
 
-
-def setup_logging() -> logging.Logger:
+def setup_logging(level: Optional[str] = None) -> logging.Logger:
     """Configure the root ``agent`` logger and return it.
 
-    Call once at application startup (inside ``main.py``).  All modules
-    under the ``agent`` package will inherit this configuration.
+    Parameters
+    ----------
+    level:
+        Log level name (DEBUG / INFO / WARNING / ERROR).
+        Falls back to ``settings.LOG_LEVEL`` when *None*.
+
+    Returns
+    -------
+    logging.Logger
+        The configured ``agent`` logger.
     """
-    log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    if level is None:
+        # Deferred import to avoid circular dependency at module scope
+        from agent.config import settings
+        level = settings.LOG_LEVEL
+
+    log_level = getattr(logging, level.upper(), logging.INFO)
 
     formatter = logging.Formatter(
         fmt=(
