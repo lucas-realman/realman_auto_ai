@@ -58,7 +58,7 @@ machines:
 
   orchestrator:
     host: 172.16.14.201
-    user: realman
+    user: user
     work_dir: ~/ai-crm
     owned_dirs:
       - orchestrator/
