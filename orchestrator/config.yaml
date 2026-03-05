@@ -85,6 +85,7 @@ testing:
   run_on: orchestrator           # 测试在 orchestrator 本地执行
   pytest_args: "-v --tb=short --continue-on-collection-errors"
   pass_threshold: 4.0            # 云端多模型加权评分通过线
+  test_pass_rate_threshold: 0.8  # 全量回退测试通过率阈值 (80%)
   report_dir: reports/
 
 # ── 通知 ─────────────────────────────────────────────────

@@ -108,6 +108,11 @@ class Config:
     def report_dir(self) -> str:
         return self._data["testing"].get("report_dir", "reports/")
 
+    @property
+    def test_pass_rate_threshold(self) -> float:
+        """全量回退测试时的通过率阈值 (0.0~1.0), 默认 0.8"""
+        return float(self._data["testing"].get("test_pass_rate_threshold", 0.8))
+
     # Notification
     @property
     def dingtalk_webhook(self) -> Optional[str]:

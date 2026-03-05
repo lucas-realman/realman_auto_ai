@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .config import Config
 from .task_models import CodingTask, TestResult
@@ -51,10 +51,11 @@ class TestRunner:
         self._git_pull()
 
         # 确定测试路径
+        is_fallback = False
         if test_paths:
             paths = test_paths
         elif task:
-            paths = self._find_tests_for_task(task)
+            paths, is_fallback = self._find_tests_for_task(task)
         else:
             paths = ["tests/"]
 
@@ -111,16 +112,58 @@ class TestRunner:
         except FileNotFoundError:
             # 如果 pytest-json-report 未安装, 降级到普通 pytest
             log.warning("pytest-json-report 未安装, 降级执行")
-            return await self._run_plain_pytest(paths, start)
+            result = await self._run_plain_pytest(paths, start)
+            return self._apply_fallback_threshold(result, is_fallback)
 
         duration = time.time() - start
 
         # 解析 JSON 报告
         if json_report.exists():
-            return self._parse_json_report(json_report, proc.stdout, duration)
+            result = self._parse_json_report(json_report, proc.stdout, duration)
+        else:
+            # 降级: 从 pytest 输出解析
+            result = self._parse_pytest_output(proc, duration)
 
-        # 降级: 从 pytest 输出解析
-        return self._parse_pytest_output(proc, duration)
+        return self._apply_fallback_threshold(result, is_fallback)
+
+    def _apply_fallback_threshold(
+        self, result: TestResult, is_fallback: bool,
+    ) -> TestResult:
+        """
+        Bug17: 当回退运行全量测试时, 使用通过率阈值判定而非严格零失败。
+
+        背景: _find_tests_for_task() 如果找不到任务专属测试文件, 会回退运行全部
+        tests/ 目录。此时其他 Sprint 任务的测试可能因为环境依赖 (FastAPI 未启动、
+        psql/redis-cli 未安装等) 而失败, 但这些失败与当前任务无关。
+
+        策略:
+        - 有专属测试 (is_fallback=False): 保持严格零失败判定
+        - 全量回退 (is_fallback=True): 若通过率 >= test_pass_rate_threshold,
+          降级判定为通过, 但在 failures 中保留失败详情供参考
+        """
+        if not is_fallback or result.passed or result.total == 0:
+            return result
+
+        threshold = getattr(self.config, "test_pass_rate_threshold", 0.8)
+        actual_rate = result.passed_count / result.total if result.total else 0.0
+
+        if actual_rate >= threshold:
+            log.info(
+                "全量回退测试: 通过率 %.1f%% (passed=%d/total=%d) ≥ 阈值 %.0f%%, "
+                "降级判定为通过 (failed=%d, error=%d)",
+                actual_rate * 100, result.passed_count, result.total,
+                threshold * 100, result.failed_count, result.error_count,
+            )
+            result.passed = True
+        else:
+            log.warning(
+                "全量回退测试: 通过率 %.1f%% (passed=%d/total=%d) < 阈值 %.0f%%, "
+                "判定为失败 (failed=%d, error=%d)",
+                actual_rate * 100, result.passed_count, result.total,
+                threshold * 100, result.failed_count, result.error_count,
+            )
+
+        return result
 
     async def _run_plain_pytest(
         self, paths: List[str], start_time: float,
@@ -232,9 +275,13 @@ class TestRunner:
 
     # ── 测试路径发现 ──
 
-    def _find_tests_for_task(self, task: CodingTask) -> List[str]:
+    def _find_tests_for_task(self, task: CodingTask) -> Tuple[List[str], bool]:
         """
         根据任务目标目录推断对应的 **单元/集成** 测试文件路径。
+
+        返回 (paths, is_fallback):
+        - is_fallback=False: 找到了任务专属的测试文件
+        - is_fallback=True:  未找到专属测试, 回退运行全量单元测试
 
         注意: 验收测试 (tests/acceptance/) 不在此处匹配,
         它们由 run_acceptance_tests() 专门管理 (会设置 RUN_ACCEPTANCE=1)。
@@ -253,11 +300,18 @@ class TestRunner:
             if path.exists():
                 found.append(c)
 
-        # 没找到特定测试, 运行全部单元测试 (排除 acceptance)
-        if not found:
-            found = ["tests/", "--ignore=tests/acceptance"]
+        if found:
+            log.info("任务 %s (target=%s) 匹配到测试: %s",
+                     task.task_id, task.target_dir, found)
+            return found, False
 
-        return found
+        # 没找到特定测试, 运行全部单元测试 (排除 acceptance)
+        log.warning(
+            "任务 %s (target=%s) 未匹配到专属测试, 回退运行全量测试 "
+            "(将使用通过率阈值判定)",
+            task.task_id, task.target_dir,
+        )
+        return ["tests/", "--ignore=tests/acceptance"], True
 
     # ── Git ──
 
