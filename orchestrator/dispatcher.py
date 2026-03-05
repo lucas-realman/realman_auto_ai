@@ -251,7 +251,10 @@ exit $AIDER_EXIT
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await asyncio.wait_for(proc.wait(), timeout=30)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            if proc.returncode != 0:
+                err_msg = stderr.decode("utf-8", errors="replace") if stderr else "unknown"
+                raise RuntimeError(f"SCP 失败 (exit={proc.returncode}): {err_msg}")
         finally:
             os.unlink(local_path)
 

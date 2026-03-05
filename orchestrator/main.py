@@ -33,7 +33,6 @@ from orchestrator.doc_parser import DocParser
 from orchestrator.git_ops import GitOps
 from orchestrator.reporter import Reporter
 from orchestrator.reviewer import AutoReviewer
-from orchestrator.state_machine import TaskStateMachine
 from orchestrator.task_engine import TaskEngine
 from orchestrator.task_models import (
     CodingTask,
@@ -211,18 +210,17 @@ class Orchestrator:
         """
         处理单个任务的编码结果, 驱动完整状态转换:
         coding_done → review → test → judge
-        """
-        sm = TaskStateMachine(task)
 
+        注意: 所有状态转换由 engine.handle_* 统一驱动,
+        不再创建本地 TaskStateMachine 避免重复转换。
+        """
         # ── 编码结果 ──
-        sm.coding_done(result)
         self.engine.handle_coding_done(task.task_id, result)
         log.info("[%s] 编码完成: exit=%d, duration=%.1fs",
                  task.task_id, result.exit_code, result.duration_sec)
 
-        if result.exit_code != 0:
-            log.warning("[%s] 编码失败, 进入重试判定", task.task_id)
-            self._handle_judge(sm)
+        if not result.success:
+            log.warning("[%s] 编码失败, 状态=%s", task.task_id, task.status.value)
             await self.reporter.notify_task_result(task)
             return
 
@@ -230,54 +228,28 @@ class Orchestrator:
         self.git_ops.pull()
 
         # ── 审查 ──
-        sm.start_review()
         review = await self.reviewer.review(task, result)
-        sm.review_done(review)
         self.engine.handle_review_done(task.task_id, review)
         log.info("[%s] 审查完成: passed=%s, layer=%s",
                  task.task_id, review.passed, review.layer)
 
         if not review.passed:
-            log.info("[%s] 审查未通过, 进入重试", task.task_id)
-            self._handle_judge(sm)
+            log.info("[%s] 审查未通过, 状态=%s", task.task_id, task.status.value)
             await self.reporter.notify_task_result(task, review=review)
             return
 
         # ── 测试 ──
         test = await self.test_runner.run_tests(task=task)
-        sm.test_done(test)
         self.engine.handle_test_done(task.task_id, test)
         log.info("[%s] 测试完成: passed=%s, %d/%d",
                  task.task_id, test.passed, test.passed_count, test.total)
 
-        if not test.passed:
-            log.info("[%s] 测试未通过, 进入重试", task.task_id)
-            self._handle_judge(sm)
-            await self.reporter.notify_task_result(task, review=review, test=test)
-            return
-
-        # ── 通过 ──
-        sm.judge(test)  # JUDGING → PASSED
-        log.info("[%s] ✅ 任务通过!", task.task_id)
-        await self.reporter.notify_task_result(task, review=review, test=test)
-
-    def _handle_judge(self, sm: TaskStateMachine) -> None:
-        """判定: 是否重试 or 升级"""
-        task = sm.task
-        max_retry = self.config.get("task.max_retries", 3)
-
-        total_retry = task.retry_count + task.review_retry + task.test_retry
-        if total_retry < max_retry:
-            # 可重试 → 重新入队
-            sm.handle_failure()
-            sm.requeue()
-            self.engine.enqueue_single(task)
-            log.info("[%s] 重新入队 (第 %d 次重试)", task.task_id, total_retry + 1)
+        if test.passed:
+            log.info("[%s] ✅ 任务通过!", task.task_id)
         else:
-            # 超过重试上限 → 升级
-            sm.handle_failure()
-            task.status = TaskStatus.ESCALATED
-            log.warning("[%s] 超过重试上限, 升级为人工处理", task.task_id)
+            log.info("[%s] 测试未通过, 状态=%s", task.task_id, task.status.value)
+
+        await self.reporter.notify_task_result(task, review=review, test=test)
 
     def _get_pending_tasks(self) -> List[CodingTask]:
         """获取非终态、非已分发的任务"""
