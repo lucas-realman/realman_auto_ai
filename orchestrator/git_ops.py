@@ -33,6 +33,10 @@ class GitOps:
         先从 edge (裸仓库, aider 输出推送到此处),
         再从 origin (GitHub), 确保两边代码都合入。
         """
+        # 确保工作区干净，防止 unstaged changes 阻止 pull --rebase
+        self._run(["git", "checkout", "--", "."])
+        self._run(["git", "clean", "-fd"])
+
         pulled = False
         for remote in ["edge", "origin"]:
             cmd = ["git", "pull"]
