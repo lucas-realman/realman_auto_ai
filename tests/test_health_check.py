@@ -363,7 +363,7 @@ class TestCheckRedis:
         mock_redis.ping = AsyncMock(return_value=True)
         mock_redis.close = AsyncMock()
 
-        with patch("aioredis.from_url", new_callable=AsyncMock, return_value=mock_redis):
+        with patch("health_check.aioredis.from_url", new_callable=AsyncMock, return_value=mock_redis):
             result = await checker.check_redis(host="127.0.0.1", port=6379)
 
         assert result.service == "redis"
@@ -377,7 +377,7 @@ class TestCheckRedis:
         mock_redis.ping = AsyncMock(return_value=False)
         mock_redis.close = AsyncMock()
 
-        with patch("aioredis.from_url", new_callable=AsyncMock, return_value=mock_redis):
+        with patch("health_check.aioredis.from_url", new_callable=AsyncMock, return_value=mock_redis):
             result = await checker.check_redis(host="127.0.0.1", port=6379)
 
         assert result.status == ServiceStatus.ERROR
@@ -387,7 +387,7 @@ class TestCheckRedis:
     async def test_redis_connection_error(self, checker):
         """Redis 连接失败"""
         with patch(
-            "aioredis.from_url",
+            "health_check.aioredis.from_url",
             new_callable=AsyncMock,
             side_effect=ConnectionRefusedError("Connection refused"),
         ):
