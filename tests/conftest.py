@@ -63,3 +63,15 @@ def contracts_dir() -> Path:
 def config_path() -> str:
     """orchestrator 配置文件路径。"""
     return str(PROJECT_ROOT / "orchestrator" / "config.yaml")
+
+
+@pytest.fixture
+def orchestrator_config():
+    """Mock orchestrator configuration for hook tests."""
+    return {
+        "host": "localhost",
+        "user": os.getenv("ORCHESTRATOR_USER", "testuser"),
+        "port": int(os.getenv("ORCHESTRATOR_PORT", "22")),
+        "project_dir": os.getenv("PROJECT_DIR", "/tmp/ai-crm"),
+        "timeout": int(os.getenv("TEST_TIMEOUT", "300")),
+    }
