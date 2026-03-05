@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
@@ -72,7 +72,7 @@ class Customer(TimestampMixin, Base):
     )
 
     tags: Mapped[list[str] | None] = mapped_column(
-        "tags", Text, nullable=True, server_default="{}",
+        ARRAY(Text), server_default="{}",
     )
 
     # ---- relationships ----

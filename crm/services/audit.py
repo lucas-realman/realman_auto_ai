@@ -8,8 +8,8 @@ from crm.models.audit_log import AuditLog
 
 async def log_audit(
     session: AsyncSession,
-    table_name: str,
-    record_id: UUID,
+    entity_type: str,
+    entity_id: UUID,
     action: str,
     old_values: dict | None = None,
     new_values: dict | None = None,
@@ -17,8 +17,8 @@ async def log_audit(
 ) -> AuditLog:
     """创建一条审计日志记录并刷写到数据库（不提交事务）。"""
     audit = AuditLog(
-        table_name=table_name,
-        record_id=record_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
         action=action,
         old_values=old_values,
         new_values=new_values,

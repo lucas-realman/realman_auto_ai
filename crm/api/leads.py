@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timezone
 from uuid import UUID
 from typing import Optional
 
@@ -57,8 +58,8 @@ async def list_leads(
         base = base.where(Lead.status == status)
         count_base = count_base.where(Lead.status == status)
     if assigned_to is not None:
-        base = base.where(Lead.assigned_to == assigned_to)
-        count_base = count_base.where(Lead.assigned_to == assigned_to)
+        base = base.where(Lead.owner_id == assigned_to)
+        count_base = count_base.where(Lead.owner_id == assigned_to)
 
     total = (await session.execute(count_base)).scalar() or 0
 
@@ -133,17 +134,17 @@ async def convert_lead(
         raise HTTPException(status_code=400, detail="Lead already converted")
 
     customer = Customer(
-        name=lead.company or lead.contact_name,
+        company_name=lead.company_name,
         level=CustomerLevel.C,
-        industry=getattr(lead, "industry", None),
-        source=lead.source,
+        industry=lead.industry,
+        lead_id=lead.id,
     )
     session.add(customer)
     await session.flush()
 
     old_status = lead.status
     lead.status = LeadStatus.converted
-    lead.customer_id = customer.id
+    lead.converted_at = datetime.now(timezone.utc)
     await session.flush()
 
     await log_audit(
@@ -152,7 +153,7 @@ async def convert_lead(
         lead.id,
         "convert",
         {"status": old_status},
-        {"status": lead.status, "customer_id": str(customer.id)},
+        {"status": lead.status, "converted_at": str(lead.converted_at)},
         None,
     )
     await log_audit(
@@ -161,7 +162,7 @@ async def convert_lead(
         customer.id,
         "create",
         None,
-        {"name": customer.name, "level": customer.level, "source": customer.source},
+        {"company_name": customer.company_name, "level": customer.level, "lead_id": str(lead.id)},
         None,
     )
     await session.commit()

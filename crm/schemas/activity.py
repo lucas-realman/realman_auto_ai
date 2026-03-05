@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from crm.schemas.base import CamelModel
 
@@ -40,4 +40,8 @@ class ActivityListResponse(CamelModel):
     total: int
     page: int
     size: int
-    pages: int
+
+    @computed_field
+    @property
+    def pages(self) -> int:
+        return -(-self.total // self.size) if self.size > 0 else 0

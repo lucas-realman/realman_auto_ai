@@ -38,8 +38,8 @@ async def create_customer(
 
     await log_audit(
         session=session,
-        table_name="customers",
-        record_id=customer.id,
+        entity_type="customers",
+        entity_id=customer.id,
         action="create",
         new_values=body.model_dump(mode="json"),
     )
@@ -55,15 +55,12 @@ async def list_customers(
     page: int = Query(1, ge=1, description="页码"),
     size: int = Query(20, ge=1, le=100, description="每页条数"),
     tier: Optional[str] = Query(None, description="客户等级筛选"),
-    status_filter: Optional[str] = Query(None, alias="status", description="状态筛选"),
     session: AsyncSession = Depends(get_session),
 ):
     stmt = select(Customer)
 
     if tier is not None:
         stmt = stmt.where(Customer.level == tier)
-    if status_filter is not None:
-        stmt = stmt.where(Customer.status == status_filter)
 
     # total count
     count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -141,8 +138,8 @@ async def update_customer(
 
     await log_audit(
         session=session,
-        table_name="customers",
-        record_id=customer.id,
+        entity_type="customers",
+        entity_id=customer.id,
         action="update",
         old_values={k: str(v) for k, v in old_values.items()},
         new_values={k: str(v) for k, v in new_values.items()},
@@ -181,8 +178,8 @@ async def add_contact(
 
     await log_audit(
         session=session,
-        table_name="contacts",
-        record_id=contact.id,
+        entity_type="contacts",
+        entity_id=contact.id,
         action="create",
         new_values={**body.model_dump(mode="json"), "customer_id": str(customer_id)},
     )

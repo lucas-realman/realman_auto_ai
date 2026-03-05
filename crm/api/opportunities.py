@@ -44,8 +44,8 @@ async def create_opportunity(
 
     await log_audit(
         session=session,
-        table_name="opportunities",
-        record_id=opp.id,
+        entity_type="opportunities",
+        entity_id=opp.id,
         action="create",
         new_values=_opportunity_to_dict(opp),
     )
@@ -119,8 +119,8 @@ async def update_opportunity(
 
     await log_audit(
         session=session,
-        table_name="opportunities",
-        record_id=opp.id,
+        entity_type="opportunities",
+        entity_id=opp.id,
         action="update",
         old_values=old_values,
         new_values=new_values,
