@@ -91,8 +91,8 @@ testing:
 
 notification:
   # 方式 1: 自定义 Webhook 机器人 (推荐, 简单)
-  dingtalk_webhook: ${DINGTALK_WEBHOOK_URL}
-  dingtalk_webhook_secret: ${DINGTALK_WEBHOOK_SECRET}  # 加签模式下的 Secret
+  dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=92b137d382bc3cf8dbfd3462eaa981458f1c562980ab9c9693add40b52b7595d"
+  dingtalk_webhook_secret: "SECcbbe3330af578ce9bae6de5c21897366822aa8df86d886bc80e441297f15be60"
 
   # 方式 2: 企业内部应用 OpenAPI (使用已有机器人)
   dingtalk_app_key: ${DINGTALK_APP_KEY}
