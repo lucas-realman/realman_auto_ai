@@ -28,6 +28,30 @@ def test_gpu_count():
     assert gpu_count >= 1, f"检测到 {gpu_count} 个 GPU，至少需要 1 个"
 
 
+def test_vllm_config():
+    """验证 vLLM 配置"""
+    from orchestrator.vllm_config import VLLMConfig
+    
+    config = VLLMConfig()
+    assert config.model_name == "Qwen/Qwen3-30B-A3B"
+    assert config.tensor_parallel_size == 2
+    assert config.port == 8000
+    
+    args = config.to_args()
+    assert "--model" in args
+    assert "Qwen/Qwen3-30B-A3B" in args
+    assert "--enable-prefix-caching" in args
+
+
+def test_vllm_deployer_init():
+    """验证 vLLM 部署器初始化"""
+    from orchestrator.vllm_deploy import VLLMDeployer
+    
+    deployer = VLLMDeployer()
+    assert deployer.config is not None
+    assert deployer.process is None
+
+
 @pytest.mark.acceptance
 def test_vllm_service_health():
     """验证 vLLM 服务健康（需要服务已启动）"""
