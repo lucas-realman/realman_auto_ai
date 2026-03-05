@@ -279,6 +279,11 @@ class TestRunner:
         """
         根据任务目标目录推断对应的 **单元/集成** 测试文件路径。
 
+        查找策略 (按优先级):
+        1. 按目录名约定匹配: tests/test_{target_dir}.py
+        2. 从任务的 git commit 中提取 aider 生成的测试文件
+        3. 全量回退: 运行 tests/ (使用通过率阈值判定)
+
         返回 (paths, is_fallback):
         - is_fallback=False: 找到了任务专属的测试文件
         - is_fallback=True:  未找到专属测试, 回退运行全量单元测试
@@ -286,6 +291,7 @@ class TestRunner:
         注意: 验收测试 (tests/acceptance/) 不在此处匹配,
         它们由 run_acceptance_tests() 专门管理 (会设置 RUN_ACCEPTANCE=1)。
         """
+        # ── 策略 1: 按目录名约定匹配 ──
         target = task.target_dir.rstrip("/").replace("/", "_")
 
         candidates = [
@@ -301,17 +307,73 @@ class TestRunner:
                 found.append(c)
 
         if found:
-            log.info("任务 %s (target=%s) 匹配到测试: %s",
+            log.info("任务 %s (target=%s) 按目录名匹配到测试: %s",
                      task.task_id, task.target_dir, found)
             return found, False
 
-        # 没找到特定测试, 运行全部单元测试 (排除 acceptance)
+        # ── 策略 2: 从 git commit 中提取 aider 生成的测试文件 ──
+        commit_tests = self._find_tests_from_commit(task)
+        if commit_tests:
+            log.info(
+                "任务 %s (target=%s) 从 git commit 中找到测试文件: %s",
+                task.task_id, task.target_dir, commit_tests,
+            )
+            return commit_tests, False
+
+        # ── 策略 3: 全量回退 ──
         log.warning(
             "任务 %s (target=%s) 未匹配到专属测试, 回退运行全量测试 "
             "(将使用通过率阈值判定)",
             task.task_id, task.target_dir,
         )
         return ["tests/", "--ignore=tests/acceptance"], True
+
+    def _find_tests_from_commit(self, task: CodingTask) -> List[str]:
+        """
+        从任务的 git commit 中提取 aider 生成的测试文件。
+
+        aider 提交的 commit message 格式为 '[S1_W1] auto: ...',
+        通过 git log --grep 找到对应 commit, 提取其中 tests/ 下的文件。
+        """
+        try:
+            # 查找包含 task_id 的最新 commit 中变更的文件
+            result = subprocess.run(
+                [
+                    "git", "log", "--pretty=format:", "--name-only",
+                    "-1", "--grep", f"[{task.task_id}]", "--fixed-strings",
+                ],
+                cwd=str(self.repo_root),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return []
+
+            files = [
+                f.strip() for f in result.stdout.strip().split("\n")
+                if f.strip()
+            ]
+            # 筛选出 tests/ 下的测试文件 (排除 acceptance/)
+            test_files = [
+                f for f in files
+                if f.startswith("tests/")
+                and f.endswith(".py")
+                and "test_" in f
+                and "acceptance/" not in f
+            ]
+
+            # 验证文件确实存在
+            valid = [
+                f for f in test_files
+                if (self.repo_root / f).exists()
+            ]
+
+            return valid
+
+        except Exception as e:
+            log.debug("从 git commit 查找测试文件失败: %s", e)
+            return []
 
     # ── Git ──
 
