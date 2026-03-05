@@ -25,6 +25,7 @@ from orchestrator.task_models import (
     TestResult,
 )
 from orchestrator.state_machine import TaskStateMachine, StateMachineError
+from orchestrator.doc_parser import DocParser, MACHINE_ALIAS
 
 
 # ───────── TaskModels ─────────
@@ -200,3 +201,83 @@ class TestMachineInfo:
         assert m.name == "test"
         assert m.status == MachineStatus.IDLE
         assert len(m.owned_dirs) == 2
+
+
+# ───────── DocParser ─────────
+
+class TestDocParser:
+    """测试新版 DocParser 对实际任务卡格式的解析"""
+
+    SAMPLE_CARD = """\
+## 1. Sprint 1-2：环境 + 骨架
+
+#### Day 1 — 环境搭建
+
+| 机器 | 任务 | aider 自动化指令 | 产出文件 | 完成标志 |
+|------|------|-------------------|----------|----------|
+| **W1** | vLLM 部署 | "检查 2×4090 驱动" | `scripts/start_vllm.sh` | `curl localhost:8000` 返回模型名 |
+| **W2** | PostgreSQL 安装 | "brew install pg" | `scripts/init_db.sh` | `psql -c "SELECT 1"` |
+
+#### Day 2 — 契约
+
+| 机器 | 任务 | aider 自动化指令 | 产出文件 | 完成标志 |
+|------|------|-------------------|----------|----------|
+| **W3** | Nginx 配置 | "生成 Nginx 基础配置" | `deploy/nginx.conf` | Nginx -t 通过 |
+"""
+
+    def test_parse_basic(self, tmp_path):
+        """解析示例任务卡应返回 3 个任务"""
+        card = tmp_path / "task_card.md"
+        card.write_text(self.SAMPLE_CARD, encoding="utf-8")
+
+        dp = DocParser(str(tmp_path))
+        tasks = dp.parse_task_card(card_path=str(card))
+
+        assert len(tasks) == 3
+        assert tasks[0].task_id == "S1_W1"
+        assert tasks[0].target_machine == "4090"
+        assert "vLLM 部署" in tasks[0].description
+        assert tasks[1].target_machine == "mac_min_8T"
+        assert tasks[2].task_id == "S2_W3"
+        assert tasks[2].target_machine == "gateway"
+
+    def test_machine_alias_mapping(self):
+        """验证机器代号映射表"""
+        assert MACHINE_ALIAS["W0"] == "orchestrator"
+        assert MACHINE_ALIAS["W1"] == "4090"
+        assert MACHINE_ALIAS["W2"] == "mac_min_8T"
+        assert MACHINE_ALIAS["W3"] == "gateway"
+        assert MACHINE_ALIAS["W4"] == "data_center"
+
+    def test_parse_real_task_card(self, project_root):
+        """解析真实任务卡应返回 > 0 个任务"""
+        dp = DocParser(str(project_root))
+        tasks = dp.parse_task_card()
+        assert len(tasks) > 0
+        # 所有任务都应有合法机器名
+        valid_machines = set(MACHINE_ALIAS.values())
+        for t in tasks:
+            assert t.target_machine in valid_machines, f"{t.task_id} has invalid machine: {t.target_machine}"
+
+    def test_acceptance_field(self, tmp_path):
+        """完成标志应被解析到 acceptance 列表"""
+        card = tmp_path / "card.md"
+        card.write_text("""\
+#### Day 1 — 测试
+
+| 机器 | 任务 | 指令 | 产出 | 完成标志 |
+|------|------|------|------|----------|
+| **W1** | 测试任务 | "test" | `out.py` | 验证通过 |
+""", encoding="utf-8")
+        dp = DocParser(str(tmp_path))
+        tasks = dp.parse_task_card(card_path=str(card))
+        assert len(tasks) == 1
+        assert tasks[0].acceptance == ["验证通过"]
+
+    def test_empty_card(self, tmp_path):
+        """空文件应返回 0 个任务"""
+        card = tmp_path / "empty.md"
+        card.write_text("# 空文件\n没有表格\n", encoding="utf-8")
+        dp = DocParser(str(tmp_path))
+        tasks = dp.parse_task_card(card_path=str(card))
+        assert len(tasks) == 0

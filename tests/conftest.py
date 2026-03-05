@@ -33,7 +33,7 @@ def sample_task_dict() -> Dict:
         "description": "测试任务",
         "context_files": ["contracts/crm-api.yaml"],
         "depends_on": [],
-        "acceptance": "通过全部单元测试",
+        "acceptance": ["通过全部单元测试"],
         "status": "created",
         "retry_count": 0,
         "review_retry": 0,

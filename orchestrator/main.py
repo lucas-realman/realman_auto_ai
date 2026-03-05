@@ -60,7 +60,10 @@ class Orchestrator:
 
     def __init__(self, config: Config):
         self.config = config
-        self.engine = TaskEngine(config)
+        self.engine = TaskEngine(
+            max_retries=config.max_retries,
+            max_concurrent=config.max_concurrent,
+        )
         self.dispatcher = Dispatcher(config)
         self.reviewer = AutoReviewer(config)
         self.test_runner = TestRunner(config)
@@ -102,8 +105,7 @@ class Orchestrator:
             return True
 
         # Step 2: 入队
-        for t in tasks:
-            self.engine.enqueue(t)
+        self.engine.enqueue(tasks)
 
         # Step 3: 通知开始
         await self.reporter.notify_sprint_start(sprint_id, tasks)
@@ -229,11 +231,11 @@ class Orchestrator:
 
         # ── 审查 ──
         sm.start_review()
-        review = await self.reviewer.review_task(task)
+        review = await self.reviewer.review(task, result)
         sm.review_done(review)
         self.engine.handle_review_done(task.task_id, review)
         log.info("[%s] 审查完成: passed=%s, layer=%s",
-                 task.task_id, review.passed, review.layer.value)
+                 task.task_id, review.passed, review.layer)
 
         if not review.passed:
             log.info("[%s] 审查未通过, 进入重试", task.task_id)
@@ -262,14 +264,14 @@ class Orchestrator:
     def _handle_judge(self, sm: TaskStateMachine) -> None:
         """判定: 是否重试 or 升级"""
         task = sm.task
-        max_retry = self.config.get("task.max_retry", 3)
+        max_retry = self.config.get("task.max_retries", 3)
 
         total_retry = task.retry_count + task.review_retry + task.test_retry
         if total_retry < max_retry:
             # 可重试 → 重新入队
             sm.handle_failure()
             sm.requeue()
-            self.engine.enqueue(task)
+            self.engine.enqueue_single(task)
             log.info("[%s] 重新入队 (第 %d 次重试)", task.task_id, total_retry + 1)
         else:
             # 超过重试上限 → 升级
@@ -280,7 +282,7 @@ class Orchestrator:
     def _get_pending_tasks(self) -> List[CodingTask]:
         """获取非终态、非已分发的任务"""
         pending = []
-        for task in self.engine._tasks.values():
+        for task, _sm in self.engine._tasks.values():
             if task.status not in (
                 TaskStatus.PASSED, TaskStatus.FAILED,
                 TaskStatus.ESCALATED, TaskStatus.DISPATCHED,
