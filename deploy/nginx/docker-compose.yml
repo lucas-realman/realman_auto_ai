@@ -1,0 +1,20 @@
+# Sirus AI CRM — Nginx 开发环境编排
+version: "3.8"
+
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sirus-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+
+volumes:
+  nginx_logs:
