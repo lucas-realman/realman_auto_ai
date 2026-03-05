@@ -1,3 +1,8 @@
+"""SQLAlchemy 声明式基类及公共 Mixin。
+
+所有业务模型继承 Base，并可选混入 TimestampMixin 获取 id / created_at / updated_at / deleted_at。
+"""
+
 from typing import Optional
 import uuid
 from datetime import datetime
@@ -8,11 +13,19 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
+    """声明式基类，所有 ORM 模型都需继承此类。"""
+
     pass
 
 
 class TimestampMixin:
-    """提供 id / created_at / updated_at / deleted_at 公共列。"""
+    """提供 id / created_at / updated_at / deleted_at 公共列。
+
+    约定:
+        - id: UUID 主键，由数据库自动生成
+        - created_at / updated_at: 自动维护时间戳
+        - deleted_at: 软删除标记，NULL 表示未删除
+    """
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

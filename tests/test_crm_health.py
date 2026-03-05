@@ -1,57 +1,98 @@
+"""CRM 后端健康检查测试。
+
+验收标准: uvicorn crm.main:app 启动，/health 返回 200。
+
+测试使用 httpx ASGITransport 直接调用 FastAPI app，
+无需真实数据库连接即可验证路由和响应格式。
 """
-Sirus AI-CRM 测试 — CRM 服务健康检查
-验证 CRM API 可达且基本功能正常。
-"""
+
 from __future__ import annotations
 
-import os
 import pytest
+from httpx import AsyncClient, ASGITransport
 
-# CRM 地址, 可通过环境变量覆盖
-CRM_BASE = os.getenv("CRM_BASE_URL", "http://172.16.12.50:8900")
-
-# 标记: 需要网络访问, 默认跳过 (CI 或手动指定时运行)
-pytestmark = pytest.mark.skipif(
-    os.getenv("RUN_INTEGRATION") != "1",
-    reason="需要设置 RUN_INTEGRATION=1 启用集成测试",
-)
+from crm.main import app
 
 
 @pytest.fixture
-def http_client():
-    """同步 httpx 客户端"""
-    import httpx
-    with httpx.Client(base_url=CRM_BASE, timeout=10) as client:
-        yield client
+async def client():
+    """创建异步测试客户端（基于 ASGI Transport，无需启动服务器）。"""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+        yield ac
 
 
-class TestCrmHealth:
-    """CRM API 健康检查"""
+class TestHealthEndpoint:
+    """GET /health 端点测试组。"""
 
-    def test_health_endpoint(self, http_client):
-        resp = http_client.get("/health")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data.get("status") == "ok" or "status" in data
+    @pytest.mark.asyncio
+    async def test_health_returns_200(self, client: AsyncClient):
+        """GET /health 应返回 200 状态码。"""
+        response = await client.get("/health")
+        assert response.status_code == 200
 
-    def test_docs_accessible(self, http_client):
-        """Swagger UI 可访问"""
-        resp = http_client.get("/docs")
-        assert resp.status_code == 200
+    @pytest.mark.asyncio
+    async def test_health_response_has_status(self, client: AsyncClient):
+        """返回体应包含 status 字段，值为 ok / degraded / error。"""
+        response = await client.get("/health")
+        data = response.json()
+        assert "status" in data
+        assert data["status"] in ("ok", "degraded", "error")
 
-    def test_customers_list(self, http_client):
-        """客户列表接口可调用"""
-        resp = http_client.get("/api/v1/customers")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert isinstance(data, (list, dict))
+    @pytest.mark.asyncio
+    async def test_health_response_has_timestamp(self, client: AsyncClient):
+        """返回体应包含 timestamp 字段（ISO-8601 格式）。"""
+        response = await client.get("/health")
+        data = response.json()
+        assert "timestamp" in data
+        assert isinstance(data["timestamp"], str)
+        assert len(data["timestamp"]) > 10  # ISO-8601 至少有日期部分
 
-    def test_activities_list(self, http_client):
-        """活动列表接口可调用"""
-        resp = http_client.get("/api/v1/activities")
-        assert resp.status_code == 200
+    @pytest.mark.asyncio
+    async def test_health_response_has_version(self, client: AsyncClient):
+        """返回体应包含 version 字段。"""
+        response = await client.get("/health")
+        data = response.json()
+        assert "version" in data
+        assert isinstance(data["version"], str)
 
-    def test_deals_list(self, http_client):
-        """商机列表接口可调用"""
-        resp = http_client.get("/api/v1/deals")
-        assert resp.status_code == 200
+    @pytest.mark.asyncio
+    async def test_health_response_has_db_field(self, client: AsyncClient):
+        """返回体应包含 db 字段（connected / disconnected）。"""
+        response = await client.get("/health")
+        data = response.json()
+        assert "db" in data
+        assert data["db"] in ("connected", "disconnected")
+
+
+class TestOpenAPIDocs:
+    """OpenAPI 文档可访问性测试。"""
+
+    @pytest.mark.asyncio
+    async def test_docs_accessible(self, client: AsyncClient):
+        """Swagger UI /docs 应返回 200。"""
+        response = await client.get("/docs")
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_redoc_accessible(self, client: AsyncClient):
+        """ReDoc /redoc 应返回 200。"""
+        response = await client.get("/redoc")
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_openapi_json_valid(self, client: AsyncClient):
+        """/openapi.json 应返回有效的 OpenAPI 规范。"""
+        response = await client.get("/openapi.json")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["info"]["title"] == "Sirus AI-CRM"
+        assert data["info"]["version"] == "0.1.0"
+        assert "paths" in data
+
+    @pytest.mark.asyncio
+    async def test_openapi_has_health_path(self, client: AsyncClient):
+        """/openapi.json 应包含 /health 路径定义。"""
+        response = await client.get("/openapi.json")
+        data = response.json()
+        assert "/health" in data["paths"]

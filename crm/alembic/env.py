@@ -1,3 +1,9 @@
+"""Alembic 迁移环境配置。
+
+支持离线和在线两种迁移模式。
+在线模式下，从 crm.config.settings 动态读取数据库 URL。
+"""
+
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -8,33 +14,22 @@ from alembic import context
 from crm.config import settings
 from crm.models.base import Base
 
-# this is the Alembic Config object, which provides
-# the values of the alembic.ini file in-use.
+# Alembic Config 对象
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# 配置 Python logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+# 设置 target_metadata 用于 autogenerate
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
+    """离线模式迁移。
 
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
+    在此模式下，仅配置 URL 而不创建 Engine。
+    适用于无法连接数据库的环境（如 CI/CD）。
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -49,15 +44,14 @@ def run_migrations_offline() -> None:
 
 
 async def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
+    """在线模式迁移。
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
+    创建 Engine 并执行迁移。
+    从 crm.config.settings 动态读取数据库 URL。
     """
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = settings.DATABASE_URL
-    
+
     connectable = create_async_engine(
         configuration["sqlalchemy.url"],
         poolclass=pool.NullPool,
@@ -70,16 +64,20 @@ async def run_migrations_online() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    """执行迁移脚本。"""
     context.configure(
-        connection=connection, target_metadata=target_metadata
+        connection=connection,
+        target_metadata=target_metadata,
     )
 
     with context.begin_transaction():
         context.run_migrations()
 
 
+# 根据模式选择执行方式
 if context.is_offline_mode():
     run_migrations_offline()
 else:
     import asyncio
+
     asyncio.run(run_migrations_online())

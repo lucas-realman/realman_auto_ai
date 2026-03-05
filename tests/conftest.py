@@ -1,13 +1,18 @@
+"""全局 pytest 配置与测试夹具。
+
+提供:
+    - anyio_backend: 指定 asyncio
+    - project_root: 项目根目录 Path
+    - sample_task_dict: 示例任务字典（供 orchestrator 测试使用）
+    - contracts_dir / config_path: 辅助路径
 """
-Sirus AI-CRM 测试配置 — conftest.py
-提供测试夹具 (fixtures) 供所有测试使用。
-"""
+
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 import pytest
 
@@ -17,21 +22,21 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def anyio_backend():
-    """Select asyncio as the async backend for anyio-based tests."""
+    """指定全局使用 asyncio 后端。"""
     return "asyncio"
 
 
 @pytest.fixture
 def project_root() -> Path:
-    """项目根目录"""
+    """项目根目录。"""
     return PROJECT_ROOT
 
 
 @pytest.fixture
 def sample_task_dict() -> Dict:
-    """一个示例任务字典"""
+    """一个示例任务字典。"""
     return {
         "task_id": "T99",
         "target_machine": "4090",
@@ -50,11 +55,11 @@ def sample_task_dict() -> Dict:
 
 @pytest.fixture
 def contracts_dir() -> Path:
-    """contracts 目录"""
+    """contracts 目录。"""
     return PROJECT_ROOT / "contracts"
 
 
 @pytest.fixture
 def config_path() -> str:
-    """orchestrator 配置文件路径"""
+    """orchestrator 配置文件路径。"""
     return str(PROJECT_ROOT / "orchestrator" / "config.yaml")

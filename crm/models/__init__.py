@@ -1,3 +1,5 @@
+"""CRM ORM 模型汇总导出。"""
+
 from .base import Base
 from .user import User
 from .lead import Lead
