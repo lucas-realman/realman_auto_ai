@@ -1,4 +1,12 @@
-# vLLM 推理服务依赖
-vllm>=0.6.0
-torch>=2.1.0
-transformers>=4.40.0
+# Sirus AI CRM — vLLM inference server dependencies
+# Target: 2×RTX 4090, CUDA 12.x, Python 3.11+
+
+vllm>=0.8.0
+huggingface-hub>=0.25.0
+torch>=2.4.0
+requests>=2.31.0
+
+# For health-check / testing
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.27.0
