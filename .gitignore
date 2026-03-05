@@ -48,3 +48,4 @@ htmlcov/
 *.bin
 *.gguf
 .aider*
+reports/
