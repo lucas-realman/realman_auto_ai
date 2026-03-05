@@ -83,6 +83,10 @@ class TestNginxConfigContent:
         """应包含 /health 健康检查端点。"""
         assert "/health" in self.content
 
+    def test_has_agent_stream_location(self):
+        """应包含 /agent/chat/stream SSE 专用 location 块。"""
+        assert "/agent/chat/stream" in self.content
+
     def test_has_dingtalk_location(self):
         """应预留钉钉回调路由 /dingtalk/。"""
         assert "/dingtalk/" in self.content
@@ -128,6 +132,47 @@ class TestNginxConfigContent:
                 assert "off" in line, "proxy_cache 应设为 off"
                 break
 
+    def test_agent_stream_sse_config(self):
+        """SSE 流式专用路由应禁用 proxy_buffering 和 proxy_cache。"""
+        stream_idx = self.content.find("/agent/chat/stream")
+        assert stream_idx != -1, "未找到 /agent/chat/stream"
+        stream_block = self.content[stream_idx : stream_idx + 800]
+        assert "proxy_buffering" in stream_block, "SSE 路由应配置 proxy_buffering"
+        assert "proxy_cache" in stream_block, "SSE 路由应配置 proxy_cache"
+        for line in stream_block.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("proxy_buffering"):
+                assert "off" in stripped, "SSE proxy_buffering 应为 off"
+            if stripped.startswith("proxy_cache"):
+                assert "off" in stripped, "SSE proxy_cache 应为 off"
+
+    def test_agent_stream_timeout_longer(self):
+        """SSE 流式路由的 read_timeout 应长于普通 Agent 路由。"""
+        def _find_read_timeout(block: str) -> int:
+            for line in block.splitlines():
+                if "proxy_read_timeout" in line:
+                    parts = line.strip().rstrip(";").split()
+                    for part in parts:
+                        cleaned = part.replace("s", "")
+                        if cleaned.isdigit():
+                            return int(cleaned)
+            return 0
+
+        agent_idx = self.content.find("location /agent/")
+        assert agent_idx != -1
+        agent_block = self.content[agent_idx : agent_idx + 800]
+
+        stream_idx = self.content.find("/agent/chat/stream")
+        assert stream_idx != -1
+        stream_block = self.content[stream_idx : stream_idx + 800]
+
+        agent_timeout = _find_read_timeout(agent_block)
+        stream_timeout = _find_read_timeout(stream_block)
+
+        assert stream_timeout >= agent_timeout, (
+            f"SSE read_timeout ({stream_timeout}s) 应 >= Agent read_timeout ({agent_timeout}s)"
+        )
+
     # ── HTTP/1.1 + keepalive ──
 
     def test_proxy_http_version_1_1(self):
@@ -157,6 +202,15 @@ class TestNginxConfigContent:
         assert "X-Real-IP" in self.content
         assert "X-Forwarded-For" in self.content
         assert "X-Forwarded-Proto" in self.content
+
+    def test_has_error_page(self):
+        """应包含上游不可达的错误页面配置。"""
+        assert "error_page" in self.content
+        assert "502" in self.content
+
+    def test_has_chunked_transfer_encoding(self):
+        """SSE 路由应启用 chunked_transfer_encoding。"""
+        assert "chunked_transfer_encoding" in self.content
 
     def test_agent_read_timeout_longer_than_api(self):
         """Agent 路由的 read_timeout 应长于 API 路由（推理耗时更长）。"""
