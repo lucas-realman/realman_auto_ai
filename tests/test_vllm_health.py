@@ -26,20 +26,32 @@ REQUEST_TIMEOUT = 10.0
 
 
 def _vllm_is_reachable() -> bool:
-    """Quick probe to check if the vLLM server is reachable and healthy."""
+    """Quick probe to check if the vLLM server is healthy.
+
+    Returns True only when /v1/models responds with HTTP 200.
+    Returns False for connection errors, timeouts, 502 Bad Gateway,
+    or any other non-200 status — so tests skip gracefully.
+    """
     try:
         resp = httpx.get(f"{VLLM_BASE_URL}/v1/models", timeout=5.0)
         return resp.status_code == 200
-    except (httpx.ConnectError, httpx.TimeoutException, OSError):
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadError, OSError):
         return False
 
+
+# Evaluate once at module import time.
+_VLLM_AVAILABLE = _vllm_is_reachable()
 
 # Skip ALL tests in this module when vLLM is not available.
 # This prevents 502 / ConnectionError failures in CI or on machines
 # where the inference server is not running.
 pytestmark = pytest.mark.skipif(
-    not _vllm_is_reachable(),
-    reason=f"vLLM server not reachable at {VLLM_BASE_URL}",
+    not _VLLM_AVAILABLE,
+    reason=(
+        f"vLLM server not reachable at {VLLM_BASE_URL} "
+        "(connection refused, timeout, or non-200 response). "
+        "Start it with: bash scripts/start_vllm.sh --daemon"
+    ),
 )
 
 
@@ -141,12 +153,20 @@ class TestVLLMConnectivity:
     """Test basic connectivity to the vLLM server."""
 
     def test_server_is_reachable(self, base_url: str) -> None:
-        """The vLLM server should be reachable at the configured URL."""
+        """The vLLM server should be reachable at the configured URL.
+
+        Note: the module-level pytestmark already skips all tests when
+        vLLM is unavailable, so if we reach this point the server was
+        reachable at import time.  We re-check here to catch transient
+        failures during the test run.
+        """
         try:
             response = httpx.get(
                 f"{base_url}/v1/models", timeout=REQUEST_TIMEOUT
             )
-            assert response.status_code == 200
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code}: {response.text}"
+            )
         except httpx.ConnectError:
             pytest.fail(
                 f"Cannot connect to vLLM at {base_url}. "

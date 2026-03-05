@@ -64,11 +64,16 @@ echo "=========================================="
 # Check nvidia-smi
 if ! command -v nvidia-smi &>/dev/null; then
     echo "[ERROR] nvidia-smi not found. NVIDIA driver may not be installed."
+    echo "        Run: bash scripts/check_gpu.sh  for detailed diagnostics."
     exit 1
 fi
 
 GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 echo "[OK] Detected ${GPU_COUNT} GPU(s)"
+nvidia-smi --query-gpu=index,name,memory.total,memory.free \
+    --format=csv,noheader | while IFS= read -r line; do
+    echo "     ${line}"
+done
 
 if [ "${GPU_COUNT}" -lt "${TP_SIZE}" ]; then
     echo "[ERROR] Tensor parallel size (${TP_SIZE}) exceeds GPU count (${GPU_COUNT})."
@@ -78,7 +83,7 @@ fi
 
 # Check vLLM is installed
 if ! python -c "import vllm" 2>/dev/null; then
-    echo "[ERROR] vLLM not installed. Run: bash scripts/install_vllm.sh"
+    echo "[ERROR] vLLM not installed. Run: pip install -r scripts/requirements-vllm.txt"
     exit 1
 fi
 
