@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# ============================================================
+# Git post-receive hook
+# ============================================================
+# Purpose:
+#   After a `git push` to the bare repository, this hook
+#   triggers pytest on the orchestrator machine (W0) via SSH.
+#
+# Installation:
+#   Copy this file to <bare-repo>/hooks/post-receive
+#   and make it executable:
+#     cp scripts/post-receive /path/to/bare/repo.git/hooks/post-receive
+#     chmod +x /path/to/bare/repo.git/hooks/post-receive
+#
+#   Or use: bash scripts/install_hook.sh /path/to/bare/repo.git
+#
+# Configuration (environment variables):
+#   ORCHESTRATOR_HOST  — SSH host for orchestrator (default: localhost)
+#   ORCHESTRATOR_USER  — SSH user (default: current user)
+#   ORCHESTRATOR_PORT  — SSH port (default: 22)
+#   PROJECT_DIR        — Project directory on orchestrator (default: ~/ai-crm)
+#   SSH_KEY            — Path to SSH private key (optional)
+#   TEST_TIMEOUT       — Timeout in seconds for the test run (default: 300)
+#   LOG_DIR            — Directory for hook logs (default: /tmp/post-receive-logs)
+# ============================================================
+
+set -euo pipefail
+
+# ── Configuration ──
+ORCHESTRATOR_HOST="${ORCHESTRATOR_HOST:-localhost}"
+ORCHESTRATOR_USER="${ORCHESTRATOR_USER:-$(whoami)}"
+ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-22}"
+PROJECT_DIR="${PROJECT_DIR:-\$HOME/ai-crm}"
+SSH_KEY="${SSH_KEY:-}"
+TEST_TIMEOUT="${TEST_TIMEOUT:-300}"
+LOG_DIR="${LOG_DIR:-/tmp/post-receive-logs}"
+
+# ── Logging setup ──
+mkdir -p "${LOG_DIR}"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+LOG_FILE="${LOG_DIR}/post-receive_${TIMESTAMP}.log"
+
+log() {
+    local level="$1"
+    shift
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [${level}] $*"
+    echo "${msg}" | tee -a "${LOG_FILE}"
+}
+
+log "INFO" "post-receive hook triggered"
+
+# ── Read pushed refs from stdin ──
+REFS=""
+while read -r oldrev newrev refname; do
+    log "INFO" "Ref updated: ${refname} ${oldrev:0:7}..${newrev:0:7}"
+    REFS="${REFS} ${refname}"
+done
+
+# Only trigger on branch pushes (skip tags, notes, etc.)
+BRANCH_PUSH=false
+for ref in ${REFS}; do
+    if [[ "${ref}" == refs/heads/* ]]; then
+        BRANCH_PUSH=true
+        break
+    fi
+done
+
+if [ "${BRANCH_PUSH}" = false ]; then
+    log "INFO" "No branch push detected, skipping test trigger"
+    exit 0
+fi
+
+# ── Build SSH command ──
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -p ${ORCHESTRATOR_PORT}"
+if [ -n "${SSH_KEY}" ] && [ -f "${SSH_KEY}" ]; then
+    SSH_OPTS="${SSH_OPTS} -i ${SSH_KEY}"
+fi
+
+SSH_CMD="ssh ${SSH_OPTS} ${ORCHESTRATOR_USER}@${ORCHESTRATOR_HOST}"
+
+# ── Remote test script ──
+# The remote script:
+#   1. Navigates to the project directory
+#   2. Pulls the latest code
+#   3. Runs pytest
+REMOTE_SCRIPT="$(cat <<'REMOTE_EOF'
+set -euo pipefail
+
+PROJECT_DIR="__PROJECT_DIR__"
+cd "${PROJECT_DIR}" || { echo "ERROR: Cannot cd to ${PROJECT_DIR}"; exit 1; }
+
+echo "=== Pulling latest code ==="
+git pull --ff-only 2>&1 || git fetch --all 2>&1
+
+echo "=== Running pytest ==="
+if [ -f "requirements.txt" ]; then
+    pip install -q -r requirements.txt 2>/dev/null || true
+fi
+
+if command -v python3 &> /dev/null; then
+    PYTHON=python3
+else
+    PYTHON=python
+fi
+
+${PYTHON} -m pytest tests/ \
+    --tb=short \
+    --no-header \
+    -q \
+    2>&1
+
+TEST_EXIT=$?
+echo "=== pytest exit code: ${TEST_EXIT} ==="
+exit ${TEST_EXIT}
+REMOTE_EOF
+)"
+
+# Substitute the project directory placeholder
+REMOTE_SCRIPT="${REMOTE_SCRIPT//__PROJECT_DIR__/${PROJECT_DIR}}"
+
+# ── Execute remote tests ──
+log "INFO" "Triggering pytest on ${ORCHESTRATOR_USER}@${ORCHESTRATOR_HOST}:${ORCHESTRATOR_PORT}"
+log "INFO" "Project directory: ${PROJECT_DIR}"
+log "INFO" "Timeout: ${TEST_TIMEOUT}s"
+
+# Run SSH in background with timeout so the hook doesn't block git push
+# indefinitely. We use nohup + background to avoid blocking the push.
+(
+    if command -v timeout &> /dev/null; then
+        timeout "${TEST_TIMEOUT}" ${SSH_CMD} bash -s <<< "${REMOTE_SCRIPT}" >> "${LOG_FILE}" 2>&1
+        EXIT_CODE=$?
+    else
+        ${SSH_CMD} bash -s <<< "${REMOTE_SCRIPT}" >> "${LOG_FILE}" 2>&1
+        EXIT_CODE=$?
+    fi
+
+    if [ ${EXIT_CODE} -eq 0 ]; then
+        log "INFO" "pytest passed successfully"
+    elif [ ${EXIT_CODE} -eq 124 ]; then
+        log "ERROR" "pytest timed out after ${TEST_TIMEOUT}s"
+    else
+        log "ERROR" "pytest failed with exit code ${EXIT_CODE}"
+    fi
+) &
+
+BACKGROUND_PID=$!
+log "INFO" "Test runner started in background (PID: ${BACKGROUND_PID})"
+log "INFO" "Log file: ${LOG_FILE}"
+
+# Don't block the git push — exit immediately
+echo ">>> post-receive: pytest triggered on orchestrator (log: ${LOG_FILE})"
+exit 0
