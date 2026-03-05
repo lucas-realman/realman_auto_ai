@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -21,6 +22,9 @@ log = logging.getLogger("orchestrator.test_runner")
 class TestRunner:
     """
     在 orchestrator 本机执行 pytest。
+    支持两种测试:
+    1. 单元/集成测试 (tests/): 验证流水线自身
+    2. 验收测试 (tests/acceptance/): 验证项目产出物
     流程: git pull → pytest → 解析结果 → 返回 TestResult
     """
 
@@ -143,6 +147,88 @@ class TestRunner:
 
         return self._parse_pytest_output(proc, time.time() - start_time)
 
+    # ── 验收测试 ──
+
+    async def run_acceptance_tests(
+        self,
+        sprint: Optional[str] = None,
+    ) -> TestResult:
+        """
+        运行验收测试 (tests/acceptance/).
+        验收测试验证项目产出物是否满足任务卡「完成标志」。
+
+        :param sprint: 指定 sprint, 如 "1-2"。None 运行全部。
+        :return: TestResult
+        """
+        start = time.time()
+        self._git_pull()
+
+        # 确定验收测试路径
+        acceptance_dir = self.repo_root / "tests" / "acceptance"
+        if not acceptance_dir.is_dir():
+            log.warning("验收测试目录不存在: %s", acceptance_dir)
+            return TestResult(
+                passed=True, total=0, passed_count=0, failed_count=0,
+                duration_sec=time.time() - start,
+                stdout="[SKIP] 验收测试目录不存在",
+            )
+
+        # 检查是否有测试文件
+        test_files = list(acceptance_dir.rglob("test_*.py"))
+        if not test_files:
+            return TestResult(
+                passed=True, total=0, passed_count=0, failed_count=0,
+                duration_sec=time.time() - start,
+                stdout="[SKIP] 无验收测试文件",
+            )
+
+        paths = ["tests/acceptance/"]
+        if sprint:
+            sprint_safe = sprint.replace("-", "_")
+            sprint_file = f"tests/acceptance/test_sprint_{sprint_safe}.py"
+            if (self.repo_root / sprint_file).exists():
+                paths = [sprint_file]
+
+        # 构建 pytest 命令 (设置 RUN_ACCEPTANCE=1)
+        json_report = self.repo_root / "reports" / "acceptance_result.json"
+        json_report.parent.mkdir(parents=True, exist_ok=True)
+
+        env = dict(os.environ)
+        env["RUN_ACCEPTANCE"] = "1"
+
+        cmd = [
+            "python3", "-m", "pytest",
+            "-v", "--tb=short",
+            f"--json-report-file={json_report}",
+            "--json-report",
+            *paths,
+        ]
+
+        log.info("执行验收测试: %s", " ".join(cmd))
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(self.repo_root),
+                capture_output=True,
+                text=True,
+                timeout=600,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return TestResult(
+                passed=False,
+                duration_sec=time.time() - start,
+                stdout="验收测试超时 (>600s)",
+                failures=["验收测试超时"],
+            )
+
+        duration = time.time() - start
+
+        if json_report.exists():
+            return self._parse_json_report(json_report, proc.stdout, duration)
+        return self._parse_pytest_output(proc, duration)
+
     # ── 测试路径发现 ──
 
     def _find_tests_for_task(self, task: CodingTask) -> List[str]:
@@ -154,6 +240,7 @@ class TestRunner:
             f"tests/test_{target}.py",               # tests/test_crm.py
             f"tests/test_{target}/",                  # tests/test_crm/
             f"tests/{target}/",                       # tests/crm/
+            f"tests/acceptance/test_{target}.py",     # tests/acceptance/test_crm.py
         ]
 
         found = []
@@ -162,7 +249,7 @@ class TestRunner:
             if path.exists():
                 found.append(c)
 
-        # 没找到特定测试, 运行全部
+        # 没找到特定测试, 运行全部 (排除 acceptance)
         if not found:
             found = ["tests/"]
 

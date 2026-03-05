@@ -90,13 +90,34 @@ testing:
 # ── 通知 ─────────────────────────────────────────────────
 
 notification:
+  # 方式 1: 自定义 Webhook 机器人 (推荐, 简单)
   dingtalk_webhook: ${DINGTALK_WEBHOOK_URL}
+  dingtalk_webhook_secret: ${DINGTALK_WEBHOOK_SECRET}  # 加签模式下的 Secret
+
+  # 方式 2: 企业内部应用 OpenAPI (使用已有机器人)
+  dingtalk_app_key: ${DINGTALK_APP_KEY}
+  dingtalk_app_secret: ${DINGTALK_APP_SECRET}
+  dingtalk_robot_code: ""                    # 机器人 robotCode, 留空则用 app_key
+  dingtalk_conversation_id: ""               # 群的 openConversationId
+
+  # @提醒
+  at_mobiles: []             # 手机号列表, 如 ["13800138000", "13900139000"]
+  at_all: false              # 是否 @所有人
+
+  # 触发事件
   notify_on:
     - sprint_start
     - sprint_end
     - task_escalated
     - daily_summary
   daily_summary_time: "18:00"
+
+# ── 验收测试 ──────────────────────────────────────────
+
+acceptance:
+  enabled: true
+  run_on_sprint_end: true    # Sprint 结束时自动运行验收测试
+  env_var: RUN_ACCEPTANCE    # 门控环境变量名
 
 # ── 文件路径 ──────────────────────────────────────────────
 
