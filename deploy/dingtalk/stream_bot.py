@@ -185,18 +185,10 @@ class CRMBotHandler(dingtalk_stream.ChatbotHandler):
 
     def process(self, callback: dingtalk_stream.CallbackMessage) -> AckMessage:
         """
-        callback.data 是一个 JSON 字符串，格式:
+        callback.data 可能是 dict 或 JSON 字符串，格式:
         {
             "conversationId": "...",
-            "chatbotCorpId": "...",
-            "chatbotUserId": "...",
-            "msgId": "...",
             "senderNick": "张三",
-            "isAdmin": false,
-            "senderStaffId": "...",
-            "sessionWebhookExpiredTime": 1234567890000,
-            "createAt": 1234567890000,
-            "senderCorpId": "...",
             "conversationType": "1",   // 1=单聊 2=群聊
             "msgtype": "text",
             "text": {"content": "查线索"},
@@ -204,7 +196,9 @@ class CRMBotHandler(dingtalk_stream.ChatbotHandler):
         }
         """
         try:
-            incoming = json.loads(callback.data)
+            incoming = callback.data
+            if isinstance(incoming, str):
+                incoming = json.loads(incoming)
             logger.info(
                 f"收到钉钉消息: senderNick={incoming.get('senderNick')}, "
                 f"type={incoming.get('conversationType')}"
@@ -231,6 +225,10 @@ class CRMBotHandler(dingtalk_stream.ChatbotHandler):
             logger.error(f"处理消息异常: {e}", exc_info=True)
 
         return AckMessage.STATUS_OK, "OK"
+
+    async def async_process(self, callback: dingtalk_stream.CallbackMessage):
+        """异步版本 process，dingtalk-stream >= 0.20 会优先调用此方法"""
+        return self.process(callback)
 
     def _reply_text(self, webhook_url: str, text: str):
         """通过 sessionWebhook 发送纯文本回复"""
