@@ -18,6 +18,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 @pytest.fixture
+def anyio_backend():
+    """Select asyncio as the async backend for anyio-based tests."""
+    return "asyncio"
+
+
+@pytest.fixture
 def project_root() -> Path:
     """项目根目录"""
     return PROJECT_ROOT
