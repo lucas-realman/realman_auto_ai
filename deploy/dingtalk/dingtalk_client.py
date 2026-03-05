@@ -158,3 +158,25 @@ class DingTalkClient:
         except Exception as e:
             print(f"更新卡片失败: {e}")
             return False
+
+
+# ---------- compatibility: webhook-mode client for bot_server.py ----------
+class _WebhookDingTalkClient:
+    """轻量 DingTalk client，通过 session webhook 直接回复消息"""
+
+    async def send_card(self, webhook_url: str, card: dict):
+        async with httpx.AsyncClient(timeout=10) as c:
+            payload = card  # card_templates already has msgtype+markdown/card
+            await c.post(webhook_url, json=payload)
+
+    async def send_text(self, webhook_url: str, text: str):
+        async with httpx.AsyncClient(timeout=10) as c:
+            payload = {"msgtype": "text", "text": {"content": text}}
+            await c.post(webhook_url, json=payload)
+
+# Override the default constructor so DingTalkClient() works without args
+_OriginalDingTalkClient = DingTalkClient
+
+class DingTalkClient(_WebhookDingTalkClient):
+    """Patched: no-arg constructor, webhook-based send_card/send_text."""
+    pass

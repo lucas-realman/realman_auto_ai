@@ -282,3 +282,43 @@ class CardTemplates:
                 }
             ]
         }
+
+
+# ---------- compatibility layer for bot_server.py ----------
+from typing import List
+
+def lead_list_card(items: List[dict], total: int = 0) -> dict:
+    """Adapter: bot_server calls lead_list_card(items, total)"""
+    if not items:
+        return error_card("暂无线索数据")
+    # Show first lead via original card, mention total in title
+    card = CardTemplates.lead_card(items[0])
+    card["title"] = f"线索列表 (共{total}条)"
+    return card
+
+def customer_detail_card(customer: dict) -> dict:
+    return CardTemplates.customer_card(customer)
+
+def opportunity_card(opp: dict) -> dict:
+    return CardTemplates.opportunity_card(opp)
+
+def help_card() -> dict:
+    return CardTemplates.help_card()
+
+def error_card(message: str) -> dict:
+    return {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": "操作失败",
+            "text": f"### ❌ 操作失败\n\n{message}\n\n---\n发送 **帮助** 查看可用命令"
+        }
+    }
+
+def success_card(message: str) -> dict:
+    return {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": "操作成功",
+            "text": f"### ✅ 操作成功\n\n{message}"
+        }
+    }

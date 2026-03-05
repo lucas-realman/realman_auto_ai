@@ -56,7 +56,7 @@ def verify_signature(timestamp: str, sign: str) -> bool:
 
 async def crm_get(path: str, params: Optional[Dict] = None) -> Dict[str, Any]:
     """GET 请求 CRM API"""
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         resp = await client.get(f"{CRM_BASE}{path}", params=params)
         resp.raise_for_status()
         return resp.json()
@@ -64,7 +64,7 @@ async def crm_get(path: str, params: Optional[Dict] = None) -> Dict[str, Any]:
 
 async def crm_post(path: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """POST 请求 CRM API"""
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         resp = await client.post(f"{CRM_BASE}{path}", json=data)
         resp.raise_for_status()
         return resp.json()
@@ -72,7 +72,7 @@ async def crm_post(path: str, data: Dict[str, Any]) -> Dict[str, Any]:
 
 async def crm_put(path: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """PUT 请求 CRM API"""
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         resp = await client.put(f"{CRM_BASE}{path}", json=data)
         resp.raise_for_status()
         return resp.json()

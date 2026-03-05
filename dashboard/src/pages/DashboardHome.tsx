@@ -175,4 +175,27 @@ const DashboardHome: React.FC = () => {
                   <List.Item.Meta
                     avatar={
                       <span style={{ fontSize: 20 }}>
-                        {activityTypeIcon[item.type] || '
+                        {activityTypeIcon[item.type] || '📋'}
+                      </span>
+                    }
+                    title={item.type}
+                    description={
+                      <>
+                        <div>{item.content}</div>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}
+                        </Typography.Text>
+                      </>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  );
+};
+
+export default DashboardHome;

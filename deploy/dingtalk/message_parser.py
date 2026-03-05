@@ -80,3 +80,35 @@ class MessageParser:
             "action": "unknown",
             "params": {"message": text}
         }
+
+
+# ---------- compatibility layer for bot_server.py ----------
+from enum import Enum
+
+class Intent(str, Enum):
+    LIST_LEADS = "list_leads"
+    SEARCH_CUSTOMER = "search_customer"
+    CREATE_LEAD = "create_lead"
+    OPPORTUNITY_INFO = "opportunity_info"
+    CONVERT_LEAD = "convert_lead"
+    HELP = "help"
+    UNKNOWN = "unknown"
+
+_ACTION_MAP = {
+    "search_lead": Intent.LIST_LEADS,
+    "create_lead": Intent.CREATE_LEAD,
+    "customer_detail": Intent.SEARCH_CUSTOMER,
+    "advance_opportunity": Intent.OPPORTUNITY_INFO,
+    "recent_activities": Intent.LIST_LEADS,
+    "help": Intent.HELP,
+    "unknown": Intent.UNKNOWN,
+    "error": Intent.UNKNOWN,
+}
+
+def parse_intent(text: str):
+    """Adapter: returns (Intent, params_dict) for bot_server.py"""
+    result = MessageParser.parse(text)
+    action = result.get("action", "unknown")
+    intent = _ACTION_MAP.get(action, Intent.UNKNOWN)
+    params = result.get("params", {})
+    return intent, params
