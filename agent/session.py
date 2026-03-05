@@ -1,7 +1,7 @@
 """Redis session management for conversation history."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 import redis.asyncio as redis
 
@@ -22,7 +22,7 @@ async def save_message(session_id: str, role: str, content: str) -> None:
     message = json.dumps({
         "role": role,
         "content": content,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
     key = f"session:{session_id}:messages"
     await r.rpush(key, message)

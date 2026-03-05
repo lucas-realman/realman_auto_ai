@@ -7,7 +7,6 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from agent.agents.sales_assistant import SalesAssistantAgent
 from agent.config import settings
 from agent.session import get_history
 
@@ -50,13 +49,25 @@ SYSTEM_PROMPT = (
 
 
 class SupervisorAgent:
+    """Supervisor Agent — classifies intent and delegates to sub-agents."""
+
     def __init__(self) -> None:
         self.client = AsyncOpenAI(
             base_url=settings.VLLM_BASE_URL,
             api_key=settings.OPENAI_API_KEY,
         )
         self.model = settings.MODEL_NAME
-        self.sales_assistant = SalesAssistantAgent()
+        self._sales_assistant: Any = None
+
+    def _get_sales_assistant(self) -> Any:
+        """Lazy-load SalesAssistantAgent to avoid import errors during skeleton phase."""
+        if self._sales_assistant is None:
+            try:
+                from agent.agents.sales_assistant import SalesAssistantAgent
+                self._sales_assistant = SalesAssistantAgent()
+            except Exception as exc:
+                logger.warning("SalesAssistantAgent unavailable: %s", exc)
+        return self._sales_assistant
 
     async def route(self, message: str, session_id: str) -> dict[str, Any]:
         start = time.time()
@@ -93,8 +104,17 @@ class SupervisorAgent:
             agent_name = "sales_assistant"
             intent = "general_chat"
 
-        if agent_name == "sales_assistant":
-            result = await self.sales_assistant.handle(message, session_id)
+        sales_assistant = self._get_sales_assistant()
+        if agent_name == "sales_assistant" and sales_assistant is not None:
+            result = await sales_assistant.handle(message, session_id)
+        elif agent_name == "sales_assistant" and sales_assistant is None:
+            # Fallback when SalesAssistantAgent is not yet implemented
+            result = {
+                "reply": f"收到您的消息：{message}",
+                "tool_calls": [],
+                "agent_used": "supervisor",
+                "model_used": f"local/{self.model}",
+            }
         elif agent_name in ("lead_scoring", "customer_insight"):
             result = {
                 "reply": f"「{agent_name}」功能开发中，敬请期待！",
@@ -103,7 +123,15 @@ class SupervisorAgent:
                 "model_used": f"local/{self.model}",
             }
         else:
-            result = await self.sales_assistant.handle(message, session_id)
+            if sales_assistant is not None:
+                result = await sales_assistant.handle(message, session_id)
+            else:
+                result = {
+                    "reply": f"收到您的消息：{message}",
+                    "tool_calls": [],
+                    "agent_used": "supervisor",
+                    "model_used": f"local/{self.model}",
+                }
 
         latency_ms = int((time.time() - start) * 1000)
         result["intent"] = intent

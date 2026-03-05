@@ -81,7 +81,12 @@ async def test_chat_returns_503_when_supervisor_unavailable(client: AsyncClient)
     import agent.main as main_mod
 
     original = main_mod._supervisor
-    main_mod._supervisor = None  # force unavailable
+    # Force _get_supervisor to return None by setting a sentinel
+    main_mod._supervisor = None
+
+    # Patch _get_supervisor to always return None
+    original_getter = main_mod._get_supervisor
+    main_mod._get_supervisor = lambda: None
     try:
         resp = await client.post(
             "/agent/chat",
@@ -91,3 +96,4 @@ async def test_chat_returns_503_when_supervisor_unavailable(client: AsyncClient)
         assert resp.status_code == 503
     finally:
         main_mod._supervisor = original
+        main_mod._get_supervisor = original_getter
