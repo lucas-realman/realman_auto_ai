@@ -165,7 +165,14 @@ class Dispatcher:
         # 任务卡也作为 --read
         contract_reads += f" --read {self.config.task_card_path}"
 
+        # 用临时文件捕获输出，避免后台进程继承 SSH stdout/stderr FD (Bug 12)
+        out_file = f"/tmp/aider_out_{task.task_id}"
         return f"""
+# ── Bug 12 fix: 输出重定向到文件，防止 SSH FD 泄漏 ──
+_OUT_FILE='{out_file}'
+exec 3>&1 4>&2
+exec > "$_OUT_FILE" 2>&1
+
 {machine.aider_prefix}
 export OPENAI_API_BASE='{api_base}'
 export OPENAI_API_KEY='{api_key}'
@@ -230,6 +237,12 @@ fi
 
 # 清理
 rm -f {msg_remote_path}
+
+# ── Bug 12 fix: 恢复原始 stdout/stderr，输出捕获内容，干净退出 ──
+exec 1>&3 2>&4
+exec 3>&- 4>&-
+cat "$_OUT_FILE" 2>/dev/null
+rm -f "$_OUT_FILE"
 exit $AIDER_EXIT
 """
 
