@@ -18,8 +18,8 @@ if [ -f "$PIDFILE" ]; then
     fi
 fi
 
-export OPENAI_API_BASE='https://yibuapi.com/v1'
-export OPENAI_API_KEY='sk-vbSc9vKFdj0KtdrdADBdq8P48yEB8T3baDmsjJClhB9Kt4Bo'
+export OPENAI_API_BASE='http://120.133.40.59/api'
+export OPENAI_API_KEY='sk-JlAwhuzfB7XrZELM1qw9pGBI3vyi8jTZVgIYCUkHesc6lbhQ'
 export DINGTALK_WEBHOOK_URL='https://oapi.dingtalk.com/robot/send?access_token=92b137d382bc3cf8dbfd3462eaa981458f1c562980ab9c9693add40b52b7595d'
 export DINGTALK_WEBHOOK_SECRET='SECcbbe3330af578ce9bae6de5c21897366822aa8df86d886bc80e441297f15be60'
 export DINGTALK_APP_KEY='dingdebpmryxshlgpdc6'

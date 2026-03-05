@@ -30,8 +30,8 @@ BRANCH="${1:-main}"
 COMMIT="${2:-HEAD}"
 
 # aider 环境变量
-AIDER_API_BASE="https://yibuapi.com/v1"
-AIDER_API_KEY="sk-vbSc9vKFdj0KtdrdADBdq8P48yEB8T3baDmsjJClhB9Kt4Bo"
+AIDER_API_BASE="http://120.133.40.59/api"
+AIDER_API_KEY="sk-JlAwhuzfB7XrZELM1qw9pGBI3vyi8jTZVgIYCUkHesc6lbhQ"
 AIDER_MODEL="openai/claude-opus-4-6"
 
 # 各机器 aider 激活前缀（处理不同安装方式）
