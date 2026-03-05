@@ -14,6 +14,7 @@
 
 import os
 import re
+from typing import Optional
 
 import pytest
 
@@ -23,7 +24,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def _get_env(name: str) -> str | None:
+def _get_env(name: str) -> Optional[str]:
     """从环境变量获取配置值。
 
     Args:
@@ -106,6 +107,10 @@ _PLACEHOLDER_SECRETS = {
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not os.environ.get("DINGTALK_APP_KEY"),
+    reason="钉钉环境变量未配置 — 跳过 (在部署机器上运行)",
+)
 class TestDingtalkConfigExists:
     """验证钉钉配置环境变量是否已设置。"""
 

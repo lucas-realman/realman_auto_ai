@@ -176,8 +176,8 @@ class TestNginxConfigContent:
                             return int(cleaned)
             return 0
 
-        api_block = self.content[api_idx : api_idx + 500]
-        agent_block = self.content[agent_idx : agent_idx + 600]
+        api_block = self.content[api_idx : api_idx + 1000]
+        agent_block = self.content[agent_idx : agent_idx + 1200]
 
         api_timeout = _extract_read_timeout(api_block)
         agent_timeout = _extract_read_timeout(agent_block)

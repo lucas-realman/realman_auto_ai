@@ -8,8 +8,11 @@ Run with::
 from __future__ import annotations
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
+fastapi = pytest.importorskip("fastapi", reason="fastapi not installed — skip on orchestrator")
+httpx = pytest.importorskip("httpx", reason="httpx not installed")
+
+from httpx import ASGITransport, AsyncClient
 from agent.main import app
 
 

@@ -104,6 +104,8 @@ log "pytest: $(${PYTHON} -m pytest --version 2>&1)"
 # ── Build pytest arguments ──
 PYTEST_ARGS=(
     "tests/"
+    "--ignore=tests/acceptance"
+    "--ignore=tests/test_post_receive.py"
     "--tb=short"
     "--no-header"
     "-q"

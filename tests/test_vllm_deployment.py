@@ -1,8 +1,9 @@
 """vLLM 部署验证测试"""
 import subprocess
 import time
-import requests
 import pytest
+
+requests = pytest.importorskip("requests", reason="requests not installed — skip on orchestrator")
 
 
 def test_nvidia_driver_installed():
