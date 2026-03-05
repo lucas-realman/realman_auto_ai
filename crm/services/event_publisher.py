@@ -1,10 +1,11 @@
+from typing import Optional
 import json
 
 import redis.asyncio as aioredis
 
 from crm.config import settings
 
-_redis: aioredis.Redis | None = None
+_redis: Optional[aioredis.Redis] = None
 
 
 async def get_redis() -> aioredis.Redis:

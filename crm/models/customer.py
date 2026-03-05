@@ -1,3 +1,4 @@
+from typing import Optional
 import enum
 import uuid
 from datetime import datetime
@@ -29,11 +30,11 @@ class Customer(TimestampMixin, Base):
         String(200), nullable=False,
     )
 
-    industry: Mapped[str | None] = mapped_column(
+    industry: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True,
     )
 
-    region: Mapped[str | None] = mapped_column(
+    region: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True,
     )
 
@@ -41,23 +42,23 @@ class Customer(TimestampMixin, Base):
         String(1), default=CustomerLevel.C.value, server_default="C",
     )
 
-    address: Mapped[str | None] = mapped_column(
+    address: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
     )
 
-    website: Mapped[str | None] = mapped_column(
+    website: Mapped[Optional[str]] = mapped_column(
         String(500), nullable=True,
     )
 
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+    owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True,
     )
 
-    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+    lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("leads.id"), nullable=True, comment="转化来源",
     )
 
-    ai_summary: Mapped[str | None] = mapped_column(
+    ai_summary: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="AI 客户画像",
     )
 
@@ -67,11 +68,11 @@ class Customer(TimestampMixin, Base):
             Vector(1024), nullable=True, comment="客户向量",
         )
 
-    notes: Mapped[str | None] = mapped_column(
+    notes: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
     )
 
-    tags: Mapped[list[str] | None] = mapped_column(
+    tags: Mapped[Optional[list[str]]] = mapped_column(
         ARRAY(Text), server_default="{}",
     )
 
@@ -92,19 +93,19 @@ class Contact(TimestampMixin, Base):
         String(100), nullable=False,
     )
 
-    title: Mapped[str | None] = mapped_column(
+    title: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True,
     )
 
-    department: Mapped[str | None] = mapped_column(
+    department: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True,
     )
 
-    phone: Mapped[str | None] = mapped_column(
+    phone: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True,
     )
 
-    email: Mapped[str | None] = mapped_column(
+    email: Mapped[Optional[str]] = mapped_column(
         String(200), nullable=True,
     )
 
@@ -112,7 +113,7 @@ class Contact(TimestampMixin, Base):
         Boolean, default=False, server_default="false",
     )
 
-    notes: Mapped[str | None] = mapped_column(
+    notes: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
     )
 

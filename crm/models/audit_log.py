@@ -1,3 +1,4 @@
+from typing import Optional
 import enum
 import uuid
 from datetime import datetime
@@ -27,7 +28,7 @@ class AuditLog(Base):
         server_default=func.uuid_generate_v4(),
     )
 
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True,
     )
 
@@ -43,19 +44,19 @@ class AuditLog(Base):
         UUID(as_uuid=True), nullable=False,
     )
 
-    old_values: Mapped[dict | None] = mapped_column(
+    old_values: Mapped[Optional[dict]] = mapped_column(
         JSONB, nullable=True,
     )
 
-    new_values: Mapped[dict | None] = mapped_column(
+    new_values: Mapped[Optional[dict]] = mapped_column(
         JSONB, nullable=True,
     )
 
-    ip_address: Mapped[str | None] = mapped_column(
+    ip_address: Mapped[Optional[str]] = mapped_column(
         String(45), nullable=True,
     )
 
-    user_agent: Mapped[str | None] = mapped_column(
+    user_agent: Mapped[Optional[str]] = mapped_column(
         String(500), nullable=True,
     )
 

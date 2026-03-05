@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -44,9 +45,9 @@ async def create_activity(
 
 @router.get("/", response_model=ActivityListResponse)
 async def list_activities(
-    customer_id: UUID | None = Query(None, description="按客户 ID 过滤"),
-    opportunity_id: UUID | None = Query(None, description="按商机 ID 过滤"),
-    lead_id: UUID | None = Query(None, description="按线索 ID 过滤"),
+    customer_id: Optional[UUID] = Query(None, description="按客户 ID 过滤"),
+    opportunity_id: Optional[UUID] = Query(None, description="按商机 ID 过滤"),
+    lead_id: Optional[UUID] = Query(None, description="按线索 ID 过滤"),
     page: int = Query(1, ge=1, description="页码"),
     size: int = Query(20, ge=1, le=100, description="每页条数"),
     session: AsyncSession = Depends(get_session),

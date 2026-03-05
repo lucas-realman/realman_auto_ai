@@ -1,3 +1,4 @@
+from typing import Optional
 import enum
 import uuid
 from datetime import datetime
@@ -35,31 +36,31 @@ class Activity(Base):
         String(200), nullable=False,
     )
 
-    content: Mapped[str | None] = mapped_column(
+    content: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
     )
 
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True,
     )
 
-    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id"), nullable=True,
     )
 
-    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(
+    opportunity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("opportunities.id"), nullable=True,
     )
 
-    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+    lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("leads.id"), nullable=True,
     )
 
-    scheduled_at: Mapped[datetime | None] = mapped_column(
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
 
-    ai_summary: Mapped[str | None] = mapped_column(
+    ai_summary: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="AI 活动摘要",
     )
 

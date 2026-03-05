@@ -1,3 +1,4 @@
+from typing import Optional
 import enum
 import uuid
 from datetime import date
@@ -34,7 +35,7 @@ class Opportunity(TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False,
     )
 
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+    owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True,
     )
 
@@ -54,19 +55,19 @@ class Opportunity(TimestampMixin, Base):
         server_default="standard",
     )
 
-    expected_close_date: Mapped[date | None] = mapped_column(
+    expected_close_date: Mapped[Optional[date]] = mapped_column(
         Date, nullable=True,
     )
 
-    win_rate: Mapped[float | None] = mapped_column(
+    win_rate: Mapped[Optional[float]] = mapped_column(
         Numeric(5, 2), nullable=True, comment="AI 预测赢率",
     )
 
-    lost_reason: Mapped[str | None] = mapped_column(
+    lost_reason: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
     )
 
-    notes: Mapped[str | None] = mapped_column(
+    notes: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
     )
 

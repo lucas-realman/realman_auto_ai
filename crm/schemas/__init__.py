@@ -26,6 +26,9 @@ from crm.schemas.activity import (
     ActivityListResponse,
 )
 
+# Resolve forward references for CustomerDetailResponse
+CustomerDetailResponse.model_rebuild()
+
 __all__ = [
     "CamelModel",
     # Lead

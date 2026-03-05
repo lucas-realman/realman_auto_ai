@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -60,8 +61,8 @@ async def create_opportunity(
 async def list_opportunities(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    stage: str | None = Query(None),
-    customer_id: UUID | None = Query(None),
+    stage: Optional[str] = Query(None),
+    customer_id: Optional[UUID] = Query(None),
     session: AsyncSession = Depends(get_session),
 ):
     stmt = select(Opportunity)

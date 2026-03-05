@@ -1,3 +1,4 @@
+from typing import Optional
 import enum
 import uuid
 from datetime import datetime
@@ -37,11 +38,11 @@ class Lead(TimestampMixin, Base):
         String(100), nullable=False,
     )
 
-    phone: Mapped[str | None] = mapped_column(
+    phone: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True,
     )
 
-    email: Mapped[str | None] = mapped_column(
+    email: Mapped[Optional[str]] = mapped_column(
         String(200), nullable=True,
     )
 
@@ -49,7 +50,7 @@ class Lead(TimestampMixin, Base):
         String(20), default=LeadSource.other.value, server_default="other",
     )
 
-    industry: Mapped[str | None] = mapped_column(
+    industry: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True,
     )
 
@@ -57,31 +58,31 @@ class Lead(TimestampMixin, Base):
         String(20), default=LeadStatus.new.value, server_default="new",
     )
 
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+    owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True,
     )
 
-    pool_id: Mapped[uuid.UUID | None] = mapped_column(
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True, comment="所属线索池",
     )
 
-    ai_score: Mapped[float | None] = mapped_column(
+    ai_score: Mapped[Optional[float]] = mapped_column(
         Numeric(5, 2), nullable=True, comment="AI 评分 0-100",
     )
 
-    ai_score_reason: Mapped[str | None] = mapped_column(
+    ai_score_reason: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="AI 评分理由",
     )
 
-    notes: Mapped[str | None] = mapped_column(
+    notes: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
     )
 
-    tags: Mapped[list[str] | None] = mapped_column(
+    tags: Mapped[Optional[list[str]]] = mapped_column(
         ARRAY(Text), server_default="{}",
     )
 
-    converted_at: Mapped[datetime | None] = mapped_column(
+    converted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, comment="转化时间",
     )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from pydantic import Field, computed_field
 
@@ -77,12 +77,14 @@ class CustomerResponse(CamelModel):
     updated_at: datetime
 
 
-class CustomerDetailResponse(CustomerResponse):
-    """客户 360 视图，包含关联的联系人、线索、商机、活动。"""
-
+if TYPE_CHECKING:
     from crm.schemas.lead import LeadResponse
     from crm.schemas.opportunity import OpportunityResponse
     from crm.schemas.activity import ActivityResponse
+
+
+class CustomerDetailResponse(CustomerResponse):
+    """客户 360 视图，包含关联的联系人、线索、商机、活动。"""
 
     contacts: list[ContactResponse] = []
     recent_leads: list[LeadResponse] = []
