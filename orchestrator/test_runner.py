@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -83,7 +84,7 @@ class TestRunner:
         json_report.parent.mkdir(parents=True, exist_ok=True)
 
         cmd = [
-            "python", "-m", "pytest",
+            sys.executable, "-m", "pytest",
             *pytest_args,
             f"--json-report-file={json_report}",
             "--json-report",
@@ -126,7 +127,7 @@ class TestRunner:
     ) -> TestResult:
         """不带 json-report 的降级执行"""
         cmd = [
-            "python", "-m", "pytest",
+            sys.executable, "-m", "pytest",
             "-x", "-v", "--tb=short",
             *paths,
         ]

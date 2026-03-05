@@ -136,8 +136,9 @@ class Config:
         """返回所有机器配置"""
         result = {}
         for name, cfg in self._data.get("machines", {}).items():
-            result[name] = MachineInfo(
-                name=name,
+            key = str(name)  # YAML 可能将纯数字键解析为 int
+            result[key] = MachineInfo(
+                name=key,
                 host=cfg["host"],
                 user=cfg["user"],
                 work_dir=cfg["work_dir"],
